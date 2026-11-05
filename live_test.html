@@ -463,13 +463,29 @@
                     <span>🔌 เชื่อมต่อ ESP32 ผ่านสาย USB Serial โดยตรง</span>
                 </button>
 
-                <div style="display: grid; grid-template-columns: 1.35fr 1fr; gap: 5px; margin-top: 6px;">
+                <div style="display: grid; grid-template-columns: 1.2fr 0.9fr 0.9fr; gap: 5px; margin-top: 6px;">
                     <button class="btn-small" id="btn-zero-tare" style="border-color: rgba(255,208,0,0.65); background: rgba(255,208,0,0.14); color: #ffd000; font-weight: 700;" onclick="calibrateUsbZeroHere()">
-                        🎯 ตั้งศูนย์ท่าปกติตรงนี้ (Zero)
+                        🎯 ตั้งศูนย์ (Zero)
+                    </button>
+                    <button class="btn-small" id="btn-scan-i2c" style="border-color: rgba(0,240,255,0.45); color: var(--cyan);" onclick="requestUsbI2CScan()">
+                        🔍 เช็คสาย I2C
                     </button>
                     <button class="btn-small" style="border-color: rgba(255,42,85,0.45); color: #ff8fa3;" onclick="clearCsvAndHistory()">
-                        🗑️ ล้างค่าเก่าเริ่มใหม่
+                        🗑️ ล้างตาราง
                     </button>
+                </div>
+
+                <!-- Live Per-Sensor Health Badges (Protocol v1) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-top: 6px; font-family: var(--font-mono); font-size: 0.6rem; text-align: center;">
+                    <div id="sensor-pill-left" style="padding: 4px 3px; border-radius: 5px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: var(--text-muted);">
+                        ⚪ L-A(0x4A): --
+                    </div>
+                    <div id="sensor-pill-right" style="padding: 4px 3px; border-radius: 5px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: var(--text-muted);">
+                        ⚪ R-B(0x4B): --
+                    </div>
+                    <div id="sensor-pill-c7" style="padding: 4px 3px; border-radius: 5px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: var(--text-muted);">
+                        ⚪ C7(0x68): --
+                    </div>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 5px;">
@@ -482,8 +498,10 @@
                 </div>
 
                 <div id="usb-raw-monitor" style="margin-top: 6px; padding: 6px 8px; background: rgba(0,0,0,0.45); border: 1px solid rgba(0,240,255,0.2); border-radius: 6px; font-family: var(--font-mono); font-size: 0.62rem; color: var(--cyan); word-break: break-all;">
-                    📟 สถานะ USB: รอกดปุ่มเชื่อมต่อ (มีระบบ Auto-Zero ปรับมุมวางบอร์ดอัตโนมัติ)
+                    📟 สถานะ USB: รอเชื่อมต่อสาย USB (Protocol v1: รับมุมตรงจาก ESP32 ไม่แปลงซ้ำ)
                 </div>
+
+                <div id="usb-step-log" style="margin-top: 5px; padding: 6px 8px; max-height: 125px; overflow-y: auto; background: rgba(4, 10, 20, 0.78); border: 1px solid rgba(255, 208, 0, 0.35); border-radius: 6px; font-family: var(--font-mono); font-size: 0.58rem; line-height: 1.45; color: #ffe082; white-space: pre-wrap; word-break: break-all;">🐞 [DEBUG LOG] รอการเชื่อมต่อ USB Serial... (เปิด F12 Console ดูควบคู่ได้)</div>
             </div>
 
             <!-- 2. COHORT GROUP FIXED ORIGIN SELECTOR (N=47 DATASET) -->
@@ -526,7 +544,7 @@
                         <span>มุมฐานคอ C7 (`c7_angle`)</span>
                         <span class="control-val" id="val-c7">-9.0°</span>
                     </div>
-                    <input type="range" id="slider-c7" min="-12" max="32" step="0.5" value="-9" oninput="onTestSliderInput()">
+                    <input type="range" id="slider-c7" min="-15" max="35" step="0.5" value="-9" oninput="onTestSliderInput()">
                 </div>
 
                 <div class="control-group">
@@ -534,7 +552,7 @@
                         <span>มุมก้ม/เงยศีรษะ (`head_pitch`)</span>
                         <span class="control-val" id="val-pitch">+0.0°</span>
                     </div>
-                    <input type="range" id="slider-pitch" min="-25" max="40" step="0.5" value="0" oninput="onTestSliderInput()">
+                    <input type="range" id="slider-pitch" min="-25" max="45" step="0.5" value="0" oninput="onTestSliderInput()">
                 </div>
 
                 <div class="control-group">
@@ -542,7 +560,7 @@
                         <span>มุมเอียงซ้าย/ขวา (`head_roll`)</span>
                         <span class="control-val" id="val-roll">+0.0°</span>
                     </div>
-                    <input type="range" id="slider-roll" min="-25" max="25" step="0.5" value="0" oninput="onTestSliderInput()">
+                    <input type="range" id="slider-roll" min="-30" max="30" step="0.5" value="0" oninput="onTestSliderInput()">
                 </div>
 
                 <div class="control-group">
@@ -1031,7 +1049,11 @@
             ctx.fillText(`⚓ Fixed Origin (${originKin.cvaDeg.toFixed(2)}°)`, origEarScr.x - 60, origEarScr.y - 12);
             ctx.restore();
 
-            // 2. Draw Live Spine & Head from Database
+            // 2. Draw Live Spine & Head (dimmed if USB is connected without fresh valid sensor data)
+            const usbInvalidOrStale = isUsbConnected && !isUsbMeasurementFreshAndValid();
+            ctx.save();
+            if (usbInvalidOrStale) ctx.globalAlpha = 0.28;
+
             for (let i = 0; i < liveKin.vertebrae.length; i++) {
                 const spColor = i === 0 ? '#ffb300' : 'rgba(200, 216, 235, 0.75)';
                 drawLine3D(liveKin.vertebrae[i], liveKin.spinousTips[i], spColor, i === 0 ? 4.5 : 3);
@@ -1043,8 +1065,15 @@
 
             drawAnatomicalHeadAndNeck(liveKin, false);
             drawLine3D(liveKin.earLPos, liveKin.earRPos, 'rgba(0, 240, 255, 0.75)', 2.5);
-            drawSphere3D(liveKin.earLPos, 0.065, '#00f0ff', '#ffffff');
-            drawSphere3D(liveKin.earRPos, 0.065, '#00f0ff', '#ffffff');
+
+            const earLCol = !isUsbConnected || !usbLastSensors
+                ? '#00f0ff'
+                : (usbLastSensors.left_present && usbLastSensors.left_fresh ? '#00e676' : '#64748b');
+            const earRCol = !isUsbConnected || !usbLastSensors
+                ? '#00f0ff'
+                : (usbLastSensors.right_present && usbLastSensors.right_fresh ? '#00e676' : '#64748b');
+            drawSphere3D(liveKin.earLPos, 0.065, earLCol, '#ffffff');
+            drawSphere3D(liveKin.earRPos, 0.065, earRCol, '#ffffff');
 
             const c7Screen = drawSphere3D(liveKin.c7Pos, 0.08, '#ffb300', '#ffffff');
             drawLine3D(new Vec3(0, 0, -0.3), new Vec3(0, 0, 1.85), '#ffb300', 2, [6, 4]);
@@ -1053,29 +1082,45 @@
             const grp = ORIGIN_GROUPS[simState.originGroupKey];
             const cvaColor = liveKin.cvaDeg >= grp.greenMin ? '#00e676' : (liveKin.cvaDeg >= grp.amberMin ? '#ffb300' : '#ff2a55');
             const cvaFill  = liveKin.cvaDeg >= grp.greenMin ? 'rgba(0,230,118,0.18)' : (liveKin.cvaDeg >= grp.amberMin ? 'rgba(255,179,0,0.20)' : 'rgba(255,42,85,0.24)');
-            const cvaLine  = drawLine3D(liveKin.c7Pos, liveKin.midEarPos, cvaColor, 3.5);
-            const horizScr = project3D(new Vec3(0, 0, 0.95), canvas.width, canvas.height);
-            const arcRad   = Math.min(95, Math.hypot(horizScr.x - c7Screen.x, horizScr.y - c7Screen.y) * 0.72);
-            drawAcuteAngleSector(c7Screen, horizScr, cvaLine.s2, arcRad, cvaFill, cvaColor, `CVA = ${liveKin.cvaDeg.toFixed(1)}°`);
+            if (!usbInvalidOrStale) {
+                const cvaLine  = drawLine3D(liveKin.c7Pos, liveKin.midEarPos, cvaColor, 3.5);
+                const horizScr = project3D(new Vec3(0, 0, 0.95), canvas.width, canvas.height);
+                const arcRad   = Math.min(95, Math.hypot(horizScr.x - c7Screen.x, horizScr.y - c7Screen.y) * 0.72);
+                drawAcuteAngleSector(c7Screen, horizScr, cvaLine.s2, arcRad, cvaFill, cvaColor, `CVA = ${liveKin.cvaDeg.toFixed(1)}°`);
+            }
+            ctx.restore();
 
             // 4. Update Telemetry Readouts
-            updateTelemetryUI(liveKin, originKin, grp, cvaColor);
+            updateTelemetryUI(liveKin, originKin, grp, cvaColor, usbInvalidOrStale);
         }
 
-        function updateTelemetryUI(liveKin, originKin, grp, cvaColor) {
+        function updateTelemetryUI(liveKin, originKin, grp, cvaColor, usbInvalidOrStale = false) {
+            const cvaEl = document.getElementById('readout-cva');
+            const badgeEl = document.getElementById('readout-badge');
+            const insightEl = document.getElementById('insight-banner');
+
+            document.getElementById('readout-origin-cva').textContent = originKin.cvaDeg.toFixed(2) + '°';
+
+            if (usbInvalidOrStale) {
+                cvaEl.textContent = '--.-°';
+                cvaEl.style.color = 'var(--text-muted)';
+                document.getElementById('readout-aht').textContent = '-- cm';
+                document.getElementById('readout-load').textContent = '-- kg';
+                badgeEl.style.background = 'rgba(255,179,0,0.18)';
+                badgeEl.style.color = 'var(--amber)';
+                badgeEl.textContent = usbInvalidReason || 'WAITING FOR VALID SENSOR DATA';
+                insightEl.textContent = '⏳ กำลังรอข้อมูลเซ็นเซอร์ที่พร้อมใช้งาน (ไม่บันทึกค่าว่างลง .CSV)';
+                return;
+            }
+
             const cva = liveKin.cvaDeg;
             const distCm = liveKin.midEarPos.sub(originKin.midEarPos).length() * 10.0;
             const effFlex = Math.max(0, (simState.c7Flexion + 9.0) * 1.05 + Math.max(0, simState.headPitch * 0.65));
             const loadKg = (5.0 + effFlex * 0.36).toFixed(1);
 
-            const cvaEl = document.getElementById('readout-cva');
-            const badgeEl = document.getElementById('readout-badge');
-            const insightEl = document.getElementById('insight-banner');
-
             cvaEl.textContent = cva.toFixed(1) + '°';
             cvaEl.style.color = cvaColor;
             document.getElementById('readout-aht').textContent = (distCm >= 0.1 ? '+' : '') + distCm.toFixed(1) + ' cm';
-            document.getElementById('readout-origin-cva').textContent = originKin.cvaDeg.toFixed(2) + '°';
             document.getElementById('readout-load').textContent = loadKg + ' kg';
 
             if (cva >= grp.greenMin) {
@@ -1098,20 +1143,35 @@
 
         /* === DATABASE POLLING, SAVING & TABLE RENDERING === */
         const API_BASE = window.location.protocol === 'file:' ? 'http://localhost/C7/' : '';
+        const USB_STALE_TIMEOUT_MS = 1200;
         let isPolling = true;
         let pollTimer = null;
         let autoSimTimer = null;
         let lastSeenId = null;
+        let dbFetchGeneration = 0;
 
         let isUsbConnected = false;
+        let usbHasValidMeasurement = false;
+        let lastValidUsbSampleMs = 0;
+        let usbInvalidReason = '';
+        let usbLastSensors = null;
         let lastUsbDbSaveMs = 0;
+        let usbSaveInFlight = false;
+
+        function isUsbMeasurementFreshAndValid() {
+            return isUsbConnected
+                && usbHasValidMeasurement
+                && (Date.now() - lastValidUsbSampleMs <= USB_STALE_TIMEOUT_MS);
+        }
 
         async function fetchLatestFromDatabase() {
             if (isUsbConnected) return; // ถ้ารับค่าสดผ่านสาย USB อยู่ ไม่ต้องเอาค่าเก่าใน DB มาทับ
+            const reqGen = dbFetchGeneration;
             try {
                 const res = await fetch(API_BASE + 'api/get_latest.php?t=' + Date.now(), { cache: 'no-store' });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const json = await res.json();
+                if (isUsbConnected || reqGen !== dbFetchGeneration) return;
 
                 document.getElementById('db-source-badge').textContent = json.source + ` (${json.total_rows} rows)`;
                 document.getElementById('total-rows-count').textContent = json.total_rows;
@@ -1123,7 +1183,7 @@
                     document.getElementById('latest-angles-line').textContent =
                         `c7=${Number(d.c7_angle).toFixed(1)}° | pitch=${Number(d.head_pitch).toFixed(1)}° | roll=${Number(d.head_roll).toFixed(1)}° | yaw=${Number(d.head_yaw).toFixed(1)}° → CVA=${Number(d.cva_angle).toFixed(2)}°`;
 
-                    if (isPolling) {
+                    if (isPolling && !isUsbConnected) {
                         simState.targetC7    = parseFloat(d.c7_angle);
                         simState.targetPitch = parseFloat(d.head_pitch);
                         simState.targetRoll  = parseFloat(d.head_roll);
@@ -1135,11 +1195,13 @@
                     }
                 }
 
-                if (Array.isArray(json.history)) {
+                if (Array.isArray(json.history) && !isUsbConnected) {
                     renderHistoryTable(json.history);
                 }
             } catch (err) {
-                document.getElementById('db-source-badge').textContent = 'USB / LOCAL MODE (พร้อมเชื่อมสาย USB)';
+                if (!isUsbConnected) {
+                    document.getElementById('db-source-badge').textContent = 'USB / LOCAL MODE (พร้อมเชื่อมสาย USB)';
+                }
             }
         }
 
@@ -1164,7 +1226,7 @@
         }
 
         function inspectRow(c7, pitch, roll, yaw, id) {
-            // Pause live polling temporarily to inspect historical row
+            if (isUsbConnected) return; // ป้องกันการเขียนทับค่าสดขณะต่อสาย USB
             if (isPolling) toggleDbPolling();
             simState.targetC7 = c7;
             simState.targetPitch = pitch;
@@ -1175,6 +1237,7 @@
         }
 
         function toggleDbPolling() {
+            if (isUsbConnected) return;
             isPolling = !isPolling;
             const btn = document.getElementById('btn-toggle-poll');
             const pill = document.getElementById('stream-status-pill');
@@ -1193,6 +1256,10 @@
         }
 
         function onTestSliderInput() {
+            if (isUsbConnected) {
+                syncSlidersToTarget();
+                return;
+            }
             if (isPolling) toggleDbPolling();
             simState.targetC7    = parseFloat(document.getElementById('slider-c7').value);
             simState.targetPitch = parseFloat(document.getElementById('slider-pitch').value);
@@ -1334,6 +1401,15 @@
         }
 
         async function sendAnglesToDb(customPayload = null, fromUsbStream = false) {
+            if (!fromUsbStream && isUsbConnected) {
+                const pill = document.getElementById('save-pill');
+                if (pill) {
+                    pill.textContent = 'USB ACTIVE (LOCKED)';
+                    pill.style.color = 'var(--cyan)';
+                }
+                return;
+            }
+
             const pill = document.getElementById('save-pill');
             const kin = computeKinematics(simState.targetC7, simState.targetPitch, simState.targetRoll, simState.targetYaw);
             const payload = customPayload || {
@@ -1344,14 +1420,15 @@
                 cva_angle:  Number(kin.cvaDeg.toFixed(2))
             };
 
-            // 1. บันทึกลงชุดข้อมูล CSV ของหน้าเว็บ + ไฟล์ที่ผูกไว้ทันทีเสมอ
+            // 1. บันทึกลงชุดข้อมูล CSV ของหน้าเว็บ + ไฟล์ที่ผูกไว้
             const savedRow = recordRowToLocalAndCsv(payload);
 
-            // 2. ยิงไปที่ api/save_angle.php (ลองทั้งพาธปัจจุบันและ http://localhost/C7/api/save_angle.php)
+            // 2. ยิงไปที่ api/save_angle.php
             const urlsToTry = window.location.protocol === 'file:'
                 ? ['http://localhost/C7/api/save_angle.php', 'http://localhost:8080/C7/api/save_angle.php']
                 : ['api/save_angle.php', 'http://localhost/C7/api/save_angle.php'];
 
+            let lastServerError = '';
             for (const url of urlsToTry) {
                 try {
                     if (!fromUsbStream) pill.textContent = 'SAVING...';
@@ -1360,9 +1437,8 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-                    if (!res.ok) continue;
-                    const out = await res.json();
-                    if (out && out.status === 'ok') {
+                    const out = await res.json().catch(() => null);
+                    if (res.ok && out && out.status === 'ok') {
                         phpBackendReachable = true;
                         pill.textContent = `CSV+DB SAVED #${out.id} ✓`;
                         pill.style.color = 'var(--emerald)';
@@ -1373,8 +1449,16 @@
                             else fetchLatestFromDatabase();
                         }
                         return;
+                    } else if (out && (out.storage_error || out.message)) {
+                        lastServerError = out.storage_error || out.message;
                     }
                 } catch (e) {}
+            }
+
+            if (lastServerError) {
+                pill.textContent = 'SAVE ERROR ⚠️';
+                pill.style.color = 'var(--crimson)';
+                return;
             }
 
             // กรณีไม่ได้เปิด XAMPP Apache ให้แจ้งว่าบันทึกไว้ใน CSV บนเบราว์เซอร์แล้ว
@@ -1385,6 +1469,7 @@
         }
 
         function quickSendPreset(c7, pitch, roll, yaw) {
+            if (isUsbConnected) return;
             simState.targetC7 = c7;
             simState.targetPitch = pitch;
             simState.targetRoll = roll;
@@ -1393,20 +1478,33 @@
             sendAnglesToDb();
         }
 
-        function toggleAutoSimStream() {
+        function stopAutoSimStream() {
             const btn = document.getElementById('btn-auto-sim');
             if (autoSimTimer) {
                 clearInterval(autoSimTimer);
                 autoSimTimer = null;
+            }
+            if (btn) {
                 btn.classList.remove('active');
                 btn.textContent = '🔄 จำลอง ESP32 ยิงทุก 1s';
+            }
+        }
+
+        function toggleAutoSimStream() {
+            if (isUsbConnected) return;
+            const btn = document.getElementById('btn-auto-sim');
+            if (autoSimTimer) {
+                stopAutoSimStream();
             } else {
                 btn.classList.add('active');
                 btn.textContent = '⏹️ หยุดจำลอง ESP32';
                 let step = 0;
                 autoSimTimer = setInterval(() => {
+                    if (isUsbConnected) {
+                        stopAutoSimStream();
+                        return;
+                    }
                     step += 0.45;
-                    // Smoothly oscillate between normal posture (-9 deg) and FHP (+20 deg)
                     const simC7 = 5.5 + Math.sin(step) * 14.5;
                     const simPitch = Math.cos(step * 0.7) * 8.0;
                     const simRoll = Math.sin(step * 0.5) * 4.0;
@@ -1424,6 +1522,7 @@
         }
 
         function selectOriginGroup(key) {
+            // เปลี่ยนเฉพาะเส้นอ้างอิงและเกณฑ์แจ้งเตือนของกลุ่ม โดยไม่แตะต้องค่ามุมที่วัดได้จริงจาก USB
             const grp = ORIGIN_GROUPS[key] || ORIGIN_GROUPS.normal;
             simState.originGroupKey = grp.key;
             simState.originC7Flexion = grp.c7Flexion;
@@ -1443,120 +1542,500 @@
             else if (view === 'back') { simState.targetCamYaw = -Math.PI * 0.5; simState.targetCamPitch = 0.12; simState.targetCamDist = 4.8; }
         }
 
-        /* === DIRECT USB WEB SERIAL READER FOR ESP32 (WITH AUTO-ZERO & ORIENTATION COMPENSATION) === */
+        /* === USB SERIAL PROTOCOL v1 RECEIVER (ESP32 OWNS CALIBRATION & ANGLES) === */
+        try { sessionStorage.removeItem('c7_usb_tare'); } catch (e) {}
+
         let usbLocalHistory = [];
-        let usbSeqId = 100;
+        let usbSeqId = 0;
         let activeUsbPort = null;
         let activeUsbReader = null;
         let keepUsbReading = false;
+        let usbSessionGen = 0;
         let usbPacketCount = 0;
+        let usbHardwareUnplugged = false;
 
-        // เก็บค่ามุมดิบเริ่มต้นของบอร์ดตอนวางนิ่ง เพื่อหักลบเป็นท่ามาตรฐานอัตโนมัติ (Zero Tare)
-        let lastRawSensor = { c7: 0, pitch: 0, roll: 0, yaw: 0, hasReading: false };
-        let usbTareOffset = { c7: 0, pitch: 0, roll: 0, yaw: 0, initialized: false };
-        try {
-            const savedTare = JSON.parse(sessionStorage.getItem('c7_usb_tare') || 'null');
-            if (savedTare && savedTare.initialized) usbTareOffset = savedTare;
-        } catch (e) {}
+        let usbLastBootId = null;
+        let usbLastCalibrationId = 0;
+        let pendingZeroAck = null; // { prevBootId, prevCalibId, timerId }
+        let i2cScanCollecting = false;
+        let i2cScanAckList = [];
 
-        function wrapAngleDiff(val, ref) {
-            let d = val - ref;
-            while (d > 180) d -= 360;
-            while (d < -180) d += 360;
-            return d;
+        function isFiniteJsonNumber(v) {
+            return typeof v === 'number' && Number.isFinite(v);
         }
 
-        function clampVal(v, minV, maxV) {
-            return Math.max(minV, Math.min(maxV, v));
-        }
-
-        function calibrateUsbZeroHere() {
-            if (lastRawSensor.hasReading) {
-                usbTareOffset.c7    = lastRawSensor.c7;
-                usbTareOffset.pitch = lastRawSensor.pitch;
-                usbTareOffset.roll  = lastRawSensor.roll;
-                usbTareOffset.yaw   = lastRawSensor.yaw;
-                usbTareOffset.initialized = true;
-                try { sessionStorage.setItem('c7_usb_tare', JSON.stringify(usbTareOffset)); } catch (e) {}
+        function setSensorBadgeStyle(el, state, text) {
+            if (!el) return;
+            el.textContent = text;
+            if (state === 'ok') {
+                el.style.background = 'rgba(0, 230, 118, 0.16)';
+                el.style.borderColor = 'rgba(0, 230, 118, 0.55)';
+                el.style.color = 'var(--emerald)';
+            } else if (state === 'warn') {
+                el.style.background = 'rgba(255, 179, 0, 0.16)';
+                el.style.borderColor = 'rgba(255, 179, 0, 0.55)';
+                el.style.color = 'var(--amber)';
+            } else if (state === 'est') {
+                el.style.background = 'rgba(0, 240, 255, 0.12)';
+                el.style.borderColor = 'rgba(0, 240, 255, 0.4)';
+                el.style.color = 'var(--cyan)';
+            } else {
+                el.style.background = 'rgba(255, 42, 85, 0.12)';
+                el.style.borderColor = 'rgba(255, 42, 85, 0.35)';
+                el.style.color = '#ff8fa3';
             }
-            // รีเซ็ตมุมปัจจุบันกลับเป็นจุด Origin ของกลุ่มที่เลือกทันที
-            simState.targetC7    = simState.originC7Flexion;
-            simState.targetPitch = 0;
-            simState.targetRoll  = 0;
-            simState.targetYaw   = 0;
-            syncSlidersToTarget();
+        }
 
+        function resetSensorBadges() {
+            ['sensor-pill-left', 'sensor-pill-right', 'sensor-pill-c7'].forEach((id, idx) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const labels = ['⚪ L-A(0x4A): --', '⚪ R-B(0x4B): --', '⚪ C7(0x68): --'];
+                el.textContent = labels[idx];
+                el.style.background = 'rgba(255,255,255,0.05)';
+                el.style.borderColor = 'rgba(255,255,255,0.12)';
+                el.style.color = 'var(--text-muted)';
+            });
+        }
+
+        function updateSensorBadgesFromProtocol(sensors, c7Estimated) {
+            if (!sensors || typeof sensors !== 'object') return;
+            usbLastSensors = sensors;
+
+            const leftEl  = document.getElementById('sensor-pill-left');
+            const rightEl = document.getElementById('sensor-pill-right');
+            const c7El    = document.getElementById('sensor-pill-c7');
+
+            if (sensors.left_present && sensors.left_fresh) {
+                setSensorBadgeStyle(leftEl, 'ok', '🟢 L-A(0x4A): ONLINE');
+            } else if (sensors.left_present) {
+                setSensorBadgeStyle(leftEl, 'warn', '🟠 L-A(0x4A): STALE');
+            } else {
+                setSensorBadgeStyle(leftEl, 'miss', '🔴 L-A(0x4A): NO_ACK');
+            }
+
+            if (sensors.right_present && sensors.right_fresh) {
+                setSensorBadgeStyle(rightEl, 'ok', '🟢 R-B(0x4B): ONLINE');
+            } else if (sensors.right_present) {
+                setSensorBadgeStyle(rightEl, 'warn', '🟠 R-B(0x4B): STALE');
+            } else {
+                setSensorBadgeStyle(rightEl, 'miss', '🔴 R-B(0x4B): NO_ACK');
+            }
+
+            if (sensors.c7_present && sensors.c7_fresh) {
+                setSensorBadgeStyle(c7El, 'ok', '🟢 C7(0x68): ONLINE');
+            } else if (sensors.c7_present) {
+                setSensorBadgeStyle(c7El, 'warn', '🟠 C7(0x68): STALE');
+            } else if (c7Estimated) {
+                setSensorBadgeStyle(c7El, 'est', '🔵 C7: ESTIMATED');
+            } else {
+                setSensorBadgeStyle(c7El, 'miss', '⚪ C7(0x68): NONE');
+            }
+        }
+
+        async function sendUsbSerialCommand(cmdText) {
+            if (!isUsbConnected || !activeUsbPort || !activeUsbPort.writable) return false;
+            let writer = null;
+            try {
+                writer = activeUsbPort.writable.getWriter();
+                const bytes = new TextEncoder().encode(cmdText);
+                await writer.write(bytes);
+                return true;
+            } catch (err) {
+                console.warn('USB write failed:', err);
+                return false;
+            } finally {
+                if (writer) {
+                    try { writer.releaseLock(); } catch (e) {}
+                }
+            }
+        }
+
+        async function calibrateUsbZeroHere() {
             const monitorEl = document.getElementById('usb-raw-monitor');
+
+            if (isUsbConnected && activeUsbPort) {
+                if (pendingZeroAck && pendingZeroAck.timerId) {
+                    clearTimeout(pendingZeroAck.timerId);
+                }
+                const prevBootId  = usbLastBootId;
+                const prevCalibId = usbLastCalibrationId;
+
+                const sent = await sendUsbSerialCommand('z\n');
+                if (!sent) {
+                    if (monitorEl) {
+                        monitorEl.style.color = 'var(--crimson)';
+                        monitorEl.textContent = '❌ ส่งคำสั่งตั้งศูนย์ (z) ไปยัง ESP32 ไม่สำเร็จ กรุณาเช็คสาย USB';
+                    }
+                    return;
+                }
+
+                if (monitorEl) {
+                    monitorEl.style.color = 'var(--amber)';
+                    monitorEl.textContent = '⏳ ส่งคำสั่ง z ไปที่ ESP32 แล้ว กำลังรอการตอบรับตั้งศูนย์ใหม่ (calibration_id)...';
+                }
+
+                const timerId = setTimeout(() => {
+                    if (pendingZeroAck && pendingZeroAck.timerId === timerId) {
+                        pendingZeroAck = null;
+                        if (monitorEl) {
+                            monitorEl.style.color = 'var(--crimson)';
+                            monitorEl.textContent = '⚠️ หมดเวลา 5s: ESP32 ยังไม่ยืนยันการตั้งศูนย์ใหม่ (ตรวจสอบว่ามีเซ็นเซอร์อย่างน้อย 1 ตัวต่อติดและส่งข้อมูลสด)';
+                        }
+                    }
+                }, 5000);
+
+                pendingZeroAck = { prevBootId, prevCalibId, timerId };
+                return;
+            }
+
+            // โหมดไม่ได้ต่อ USB (Manual Slider Test)
+            simState.targetC7    = -9.0;
+            simState.targetPitch = 0.0;
+            simState.targetRoll  = 0.0;
+            simState.targetYaw   = 0.0;
+            syncSlidersToTarget();
             if (monitorEl) {
                 monitorEl.style.color = 'var(--emerald)';
-                monitorEl.textContent = `🎯 ตั้งศูนย์ (Zero) สำเร็จ! ยึดตำแหน่งวางบอร์ดปัจจุบันเป็นท่ามาตรฐาน (CVA = ${simState.originCVA}°)`;
+                monitorEl.textContent = '🎯 รีเซ็ตสไลเดอร์ทดสอบกลับเป็นท่ากลาง (C7=-9°, Pitch/Roll/Yaw=0° → CVA=52.05°)';
+            }
+        }
+
+        let usbScanStickyUntilMs = 0;
+        let i2cBusSummaryText = '';
+        let i2cScanGuardTimer = null;
+        let usbQuickI2cStatus = {};
+        let usbDebugLines = [];
+        let lastLoggedInvalidKey = '';
+        let loggedFirstValidJson = false;
+
+        function appendUsbStepLog(stage, detail, level = 'info') {
+            const ts = new Date().toTimeString().split(' ')[0];
+            const line = `[${ts}][${stage}] ${detail}`;
+            if (level === 'error') {
+                console.error(line);
+            } else if (level === 'warn') {
+                console.warn(line);
+            } else {
+                console.log(line);
+            }
+            usbDebugLines.push(line);
+            if (usbDebugLines.length > 20) {
+                usbDebugLines.shift();
+            }
+            const logEl = document.getElementById('usb-step-log');
+            if (logEl) {
+                logEl.textContent = usbDebugLines.join('\n');
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+        }
+
+        async function requestUsbI2CScan() {
+            const monitorEl = document.getElementById('usb-raw-monitor');
+            if (!isUsbConnected || !activeUsbPort) {
+                appendUsbStepLog('I2C-SCAN', 'กดสแกนแต่ยังไม่ได้เชื่อมต่อ USB', 'warn');
+                if (monitorEl) {
+                    monitorEl.style.color = 'var(--amber)';
+                    monitorEl.textContent = '⚠️ กรุณากดปุ่มเชื่อมต่อสาย USB กับ ESP32 ก่อนสั่งสแกนสาย I2C ครับ';
+                }
+                return;
+            }
+            if (i2cScanGuardTimer) {
+                clearTimeout(i2cScanGuardTimer);
+                i2cScanGuardTimer = null;
+            }
+            i2cScanCollecting = false;
+            i2cScanAckList = [];
+            i2cBusSummaryText = '';
+            appendUsbStepLog('I2C-SCAN', 'กำลังส่งคำสั่ง "s\\n" ไปที่ ESP32...');
+            const ok = await sendUsbSerialCommand('s\n');
+            appendUsbStepLog('I2C-SCAN', ok ? 'ส่งคำสั่ง "s\\n" สำเร็จ รอ I2C FULL_SCAN_BEGIN...' : 'ส่งคำสั่ง "s\\n" ล้มเหลว!', ok ? 'info' : 'error');
+            if (monitorEl) {
+                monitorEl.style.color = ok ? 'var(--cyan)' : 'var(--crimson)';
+                monitorEl.textContent = ok
+                    ? '🔍 กำลังสแกนบัส I2C บนบอร์ด ESP32...'
+                    : '❌ ไม่สามารถส่งคำสั่งสแกน I2C ไปยัง ESP32 ได้';
+            }
+            if (ok) {
+                i2cScanGuardTimer = setTimeout(() => {
+                    if (i2cScanCollecting) {
+                        i2cScanCollecting = false;
+                        usbScanStickyUntilMs = Date.now() + 6000;
+                        appendUsbStepLog('I2C-SCAN', 'หมดเวลา 3.5s: ไม่ได้รับ I2C FULL_SCAN_END จาก ESP32', 'warn');
+                        if (monitorEl) {
+                            monitorEl.style.color = 'var(--amber)';
+                            monitorEl.textContent = '⚠️ การสแกน I2C ใช้เวลานานเกินกำหนด (กรุณาอัปโหลดไฟล์ esp32_c7_prototype.ino ล่าสุดลงบอร์ดอีกครั้ง)';
+                        }
+                    }
+                }, 3500);
             }
         }
 
         function clearCsvAndHistory() {
-            csvAllRows = [
-                { id: 1, c7_angle: -9, head_pitch: 0, head_roll: 0, head_yaw: 0, cva_angle: 52.05, created_at: '2026-10-21 10:48:00' }
-            ];
+            // ล้างเฉพาะบัฟเฟอร์ CSV บนเบราว์เซอร์และตาราง Local โดยไม่ลบประวัติฝั่ง Server และไม่สั่งรีเซ็ตศูนย์บอร์ด
+            csvAllRows = [];
             usbLocalHistory = [];
-            usbSeqId = 1;
+            usbSeqId = 0;
             try { localStorage.removeItem('c7_csv_rows'); } catch (e) {}
-            renderHistoryTable(csvAllRows);
+            renderHistoryTable([]);
             const navCountEl = document.getElementById('nav-csv-count');
-            if (navCountEl) navCountEl.textContent = csvAllRows.length;
-            document.getElementById('total-rows-count').textContent = csvAllRows.length;
-            calibrateUsbZeroHere();
+            if (navCountEl) navCountEl.textContent = '0';
+            document.getElementById('total-rows-count').textContent = '0';
+            const monitorEl = document.getElementById('usb-raw-monitor');
+            if (monitorEl) {
+                monitorEl.style.color = 'var(--cyan)';
+                monitorEl.textContent = '🗑️ ล้างรายการบัฟเฟอร์หน้าเว็บเรียบร้อย (ไม่กระทบการตั้งศูนย์บน ESP32)';
+            }
         }
 
-        function normalizeRawSensorToBiomechanics(rawC7, rawPitch, rawRoll, rawYaw) {
-            lastRawSensor = { c7: rawC7, pitch: rawPitch, roll: rawRoll, yaw: rawYaw, hasReading: true };
-
-            // ทันทีที่อ่านค่าชุดแรกได้ ให้ตั้งตำแหน่งวางบอร์ดปัจจุบันเป็นศูนย์ (Auto-Zero Tare) อัตโนมัติ
-            if (!usbTareOffset.initialized) {
-                usbTareOffset.c7    = rawC7;
-                usbTareOffset.pitch = rawPitch;
-                usbTareOffset.roll  = rawRoll;
-                usbTareOffset.yaw   = rawYaw;
-                usbTareOffset.initialized = true;
-                try { sessionStorage.setItem('c7_usb_tare', JSON.stringify(usbTareOffset)); } catch (e) {}
+        function handleUsbNonJsonLine(trimmed, monitorEl) {
+            if (trimmed.startsWith('[ESP-LOG]') || trimmed.startsWith('✅') || trimmed.startsWith('⚠️') || trimmed.startsWith('🚀') || trimmed.startsWith('rst:') || trimmed.startsWith('Guru ')) {
+                appendUsbStepLog('ESP32', trimmed.replace('[ESP-LOG] ', ''));
+                if (monitorEl && !usbHasValidMeasurement && Date.now() > usbScanStickyUntilMs) {
+                    monitorEl.style.color = 'var(--cyan)';
+                    monitorEl.textContent = `📟 ${trimmed}`;
+                }
+                return true;
             }
-
-            const dPitch = wrapAngleDiff(rawPitch, usbTareOffset.pitch);
-            const dRoll  = wrapAngleDiff(rawRoll,  usbTareOffset.roll);
-            const dYaw   = wrapAngleDiff(rawYaw,   usbTareOffset.yaw);
-            const dC7    = wrapAngleDiff(rawC7,    usbTareOffset.c7);
-
-            // มุมศีรษะสัมพัทธ์จากจุดวางบอร์ดเริ่มต้น (จำกัดให้อยู่ในสรีระมนุษย์จริง)
-            const calPitch = clampVal(-dPitch, -25.0, 45.0);
-            const calRoll  = clampVal(dYaw * 0.6, -30.0, 30.0);
-            const calYaw   = clampVal(dRoll * 0.5, -40.0, 40.0);
-
-            // คำนวณมุม C7:
-            // หาก rawC7 ค้างแถว +70°..+90° (เกิดจากวาง Breadboard นอนราบบนโต๊ะแล้วแกน Z รับแรงโน้มถ่วง 1g)
-            // ให้คำนวณการก้มของฐานคอ C7 จากการกระดกบอร์ด (calPitch + dC7) เทียบกับจุด Origin (-9.0°)
-            let calC7;
-            if (Math.abs(rawC7) > 45.0) {
-                calC7 = simState.originC7Flexion + (calPitch * 0.75) + (dC7 * 1.2);
-            } else {
-                calC7 = simState.originC7Flexion + dC7 + (calPitch * 0.35);
+            if (trimmed === 'I2C FULL_SCAN_BEGIN') {
+                i2cScanCollecting = true;
+                i2cScanAckList = [];
+                i2cBusSummaryText = '';
+                appendUsbStepLog('I2C-SCAN', 'ESP32 เริ่มสแกน (I2C FULL_SCAN_BEGIN)');
+                return true;
             }
-            calC7 = clampVal(calC7, -15.0, 35.0);
-
-            const kin = computeKinematics(calC7, calPitch, calRoll, calYaw);
-            return {
-                c7_angle:   Number(calC7.toFixed(2)),
-                head_pitch: Number(calPitch.toFixed(2)),
-                head_roll:  Number(calRoll.toFixed(2)),
-                head_yaw:   Number(calYaw.toFixed(2)),
-                cva_angle:  Number(kin.cvaDeg.toFixed(2))
-            };
+            if (trimmed.startsWith('I2C BUS_SUMMARY:')) {
+                i2cBusSummaryText = trimmed
+                    .replace('I2C BUS_SUMMARY:', '')
+                    .replace('Wire(21/22)=', 'ขา21/22=')
+                    .replace('Wire1(18/19)=', 'ขา18/19=')
+                    .trim();
+                appendUsbStepLog('I2C-SCAN', `สรุปบัส: ${i2cBusSummaryText}`);
+                return true;
+            }
+            if (trimmed === 'I2C FULL_SCAN_END') {
+                i2cScanCollecting = false;
+                if (i2cScanGuardTimer) {
+                    clearTimeout(i2cScanGuardTimer);
+                    i2cScanGuardTimer = null;
+                }
+                usbScanStickyUntilMs = Date.now() + 10000; // ล็อกผลสแกนค้างไว้ 10 วินาทีให้อ่านได้ชัดเจน
+                appendUsbStepLog('I2C-SCAN', `จบการสแกน พบ ${i2cScanAckList.length} ตัว: [${i2cScanAckList.join(', ')}]`);
+                if (monitorEl) {
+                    const busDetail = i2cBusSummaryText ? ` | ${i2cBusSummaryText}` : '';
+                    if (i2cScanAckList.length === 0) {
+                        monitorEl.style.color = 'var(--crimson)';
+                        monitorEl.textContent = `🔍 ผลสแกน I2C: ไม่พบอุปกรณ์เลย!${busDetail} (เช็คสาย 3V3, GND, SDA, SCL)`;
+                    } else {
+                        monitorEl.style.color = 'var(--emerald)';
+                        monitorEl.textContent = `🔍 ผลสแกน I2C พบ ${i2cScanAckList.length} ตัว: ${i2cScanAckList.join(', ')}${busDetail}`;
+                    }
+                }
+                return true;
+            }
+            if (trimmed.startsWith('I2C 0x')) {
+                appendUsbStepLog('I2C-ACK', trimmed);
+                if (i2cScanCollecting && trimmed.endsWith(': ACK')) {
+                    const addrToken = trimmed.replace('I2C ', '').replace(': ACK', '').trim();
+                    if (!i2cScanAckList.includes(addrToken)) {
+                        i2cScanAckList.push(addrToken);
+                    }
+                } else if (monitorEl && !i2cScanCollecting) {
+                    // รวมสถานะทั้ง 3 ตัว (0x4A, 0x4B, 0x68) ไว้ในบรรทัดเดียวกัน ไม่ให้บรรทัดสุดท้าย (0x68) มาเขียนทับตัวก่อนหน้า!
+                    const parts = trimmed.replace('I2C ', '').split(':');
+                    if (parts.length === 2) {
+                        usbQuickI2cStatus[parts[0].trim()] = parts[1].trim();
+                    }
+                    const s4A = usbQuickI2cStatus['0x4A'] || '--';
+                    const s4B = usbQuickI2cStatus['0x4B'] || '--';
+                    const s68 = usbQuickI2cStatus['0x68'] || '--';
+                    if (!usbHasValidMeasurement) {
+                        if (s4A === 'ACK' || s4A === 'NO_ACK') {
+                            setSensorBadgeStyle(document.getElementById('sensor-pill-left'), s4A === 'ACK' ? 'warn' : 'miss', s4A === 'ACK' ? '🟡 L-A(0x4A): ACK' : '🔴 L-A(0x4A): NO_ACK');
+                        }
+                        if (s4B === 'ACK' || s4B === 'NO_ACK') {
+                            setSensorBadgeStyle(document.getElementById('sensor-pill-right'), s4B === 'ACK' ? 'warn' : 'miss', s4B === 'ACK' ? '🟡 R-B(0x4B): ACK' : '🔴 R-B(0x4B): NO_ACK');
+                        }
+                        if (s68 === 'ACK' || s68 === 'NO_ACK') {
+                            setSensorBadgeStyle(document.getElementById('sensor-pill-c7'), s68 === 'ACK' ? 'warn' : 'miss', s68 === 'ACK' ? '🟡 C7(0x68): ACK' : '🔴 C7(0x68): NO_ACK');
+                        }
+                        monitorEl.style.color = 'var(--cyan)';
+                        monitorEl.textContent = `🔎 สถานะ I2C: ซ้ายA(0x4A)=${s4A} | ขวาB(0x4B)=${s4B} | ต้นคอC7(0x68)=${s68}`;
+                    }
+                }
+                return true;
+            }
+            return false;
         }
 
-        let usbHardwareUnplugged = false;
+        function processUsbJsonPacket(obj, rawJsonText, monitorEl) {
+            // ตรวจสอบว่าเป็น Protocol v1 หรือไม่
+            if (obj.protocol_version !== 1) {
+                usbHasValidMeasurement = false;
+                usbInvalidReason = 'LEGACY FIRMWARE — PLEASE UPLOAD PROTOCOL v1';
+                appendUsbStepLog('JSON-ERR', `พบ JSON รุ่นเก่า (ไม่มี protocol_version:1): ${rawJsonText.substring(0, 80)}`, 'warn');
+                if (monitorEl) {
+                    monitorEl.style.color = 'var(--amber)';
+                    monitorEl.textContent = '⚠️ บอร์ด ESP32 ยังเป็นโค้ดรุ่นเก่า (ไม่มี protocol_version:1) กรุณาอัปโหลดไฟล์ esp32_c7_prototype.ino ตัวใหม่ลงบอร์ดครับ';
+                }
+                return;
+            }
+
+            updateSensorBadgesFromProtocol(obj.sensors, Boolean(obj.c7_estimated));
+
+            const bootIdOk  = Number.isInteger(obj.boot_id);
+            const calibIdOk = Number.isInteger(obj.calibration_id) && obj.calibration_id >= 1;
+            if (bootIdOk && usbLastBootId !== obj.boot_id) {
+                appendUsbStepLog('ESP-BOOT', `รับแพ็กเก็ตจาก boot_id=${obj.boot_id} (cal_id=${obj.calibration_id})`);
+            }
+            if (bootIdOk) usbLastBootId = obj.boot_id;
+            if (Number.isInteger(obj.calibration_id)) usbLastCalibrationId = obj.calibration_id;
+
+            // ตรวจสอบคำตอบรับปุ่มตั้งศูนย์ (Zero Acknowledgement)
+            if (pendingZeroAck && obj.calibrated === true && calibIdOk) {
+                const changed = (obj.calibration_id !== pendingZeroAck.prevCalibId) ||
+                                (bootIdOk && obj.boot_id !== pendingZeroAck.prevBootId);
+                if (changed) {
+                    clearTimeout(pendingZeroAck.timerId);
+                    pendingZeroAck = null;
+                    appendUsbStepLog('ZERO-ACK', `ตั้งศูนย์ใหม่สำเร็จ calibration_id=#${obj.calibration_id}`);
+                    if (monitorEl) {
+                        monitorEl.style.color = 'var(--emerald)';
+                        monitorEl.textContent = `🎯 ESP32 ตั้งศูนย์ใหม่สำเร็จแล้ว! (calibration_id = #${obj.calibration_id})`;
+                    }
+                }
+            }
+
+            // ตรวจสอบความสมบูรณ์และขอบเขตของมุมตามสัญญา Protocol v1
+            const isValidFlag = (obj.valid === true && obj.calibrated === true && calibIdOk);
+            const hasFiniteAngles = isFiniteJsonNumber(obj.c7_angle)
+                && isFiniteJsonNumber(obj.head_pitch)
+                && isFiniteJsonNumber(obj.head_roll)
+                && isFiniteJsonNumber(obj.head_yaw);
+
+            if (!isValidFlag || !hasFiniteAngles) {
+                usbHasValidMeasurement = false;
+                loggedFirstValidJson = false;
+                const s = obj.sensors || {};
+                if (!s.left_present && !s.right_present) {
+                    usbInvalidReason = s.c7_present
+                        ? 'NO BNO085 (เจอเฉพาะ C7 0x68 — รอสัญญาณหูซ้าย/ขวา)'
+                        : 'NO BNO085 DETECTED (0x4A / 0x4B NO_ACK)';
+                } else if (!obj.calibrated) {
+                    usbInvalidReason = `WAITING FOR FIRST QUATERNION (L_ack=${s.left_present?1:0},L_fresh=${s.left_fresh?1:0} | R_ack=${s.right_present?1:0},R_fresh=${s.right_fresh?1:0})`;
+                } else {
+                    usbInvalidReason = `SENSOR STALE (L_fresh=${s.left_fresh?1:0}, R_fresh=${s.right_fresh?1:0}, C7_fresh=${s.c7_fresh?1:0})`;
+                }
+                const invalidKey = `${usbInvalidReason}|${s.left_present}|${s.left_fresh}|${s.right_present}|${s.right_fresh}|${s.c7_present}|${s.c7_fresh}`;
+                if (invalidKey !== lastLoggedInvalidKey) {
+                    lastLoggedInvalidKey = invalidKey;
+                    appendUsbStepLog('JSON-WAIT', usbInvalidReason, 'warn');
+                }
+                if (!pendingZeroAck && monitorEl && !i2cScanCollecting && Date.now() > usbScanStickyUntilMs) {
+                    monitorEl.style.color = 'var(--amber)';
+                    monitorEl.textContent = `⏳ [${usbInvalidReason}]`;
+                }
+                return;
+            }
+
+            const c7    = obj.c7_angle;
+            const pitch = obj.head_pitch;
+            const roll  = obj.head_roll;
+            const yaw   = obj.head_yaw;
+
+            if (c7 < -15 || c7 > 35 || pitch < -25 || pitch > 45 || roll < -30 || roll > 30 || yaw < -40 || yaw > 40) {
+                usbHasValidMeasurement = false;
+                usbInvalidReason = 'OUT OF ANATOMICAL BOUNDS';
+                appendUsbStepLog('JSON-ERR', `มุมเกินขอบเขตสรีระ: c7=${c7}, pitch=${pitch}, roll=${roll}, yaw=${yaw}`, 'warn');
+                return;
+            }
+
+            const kin = computeKinematics(c7, pitch, roll, yaw);
+            const derivedCva = Number(kin.cvaDeg.toFixed(2));
+
+            if (isFiniteJsonNumber(obj.cva_angle) && Math.abs(obj.cva_angle - kin.cvaDeg) > 0.15) {
+                usbHasValidMeasurement = false;
+                usbInvalidReason = 'CVA PARITY MISMATCH';
+                appendUsbStepLog('JSON-ERR', `CVA ไม่ตรงกัน: esp=${obj.cva_angle} vs web=${derivedCva}`, 'warn');
+                return;
+            }
+
+            // มุมผ่านการตรวจสอบครบถ้วน — นำไปแสดงผลตรงๆ โดยไม่สลับแกนหรือหักลบซ้ำ!
+            usbHasValidMeasurement = true;
+            lastValidUsbSampleMs = Date.now();
+            usbInvalidReason = '';
+            lastLoggedInvalidKey = '';
+            usbPacketCount++;
+            if (!loggedFirstValidJson) {
+                loggedFirstValidJson = true;
+                appendUsbStepLog('STREAM-OK', `✅ เริ่มรับค่ามุมสดสำเร็จ! C7=${c7}° Pitch=${pitch}° Roll=${roll}° Yaw=${yaw}° → CVA=${derivedCva}°`);
+            }
+
+            simState.targetC7    = c7;
+            simState.targetPitch = pitch;
+            simState.targetRoll  = roll;
+            simState.targetYaw   = yaw;
+            syncSlidersToTarget();
+
+            if (!pendingZeroAck && monitorEl && !i2cScanCollecting && Date.now() > usbScanStickyUntilMs) {
+                const s = obj.sensors || {};
+                const earTag = (s.left_present && s.right_present)
+                    ? 'L+R DUAL'
+                    : (s.left_present ? 'LEFT 0x4A' : 'RIGHT 0x4B');
+                monitorEl.style.color = 'var(--cyan)';
+                monitorEl.textContent = `📥 [#${usbPacketCount} | ${earTag} | cal#${obj.calibration_id}] C7=${c7.toFixed(1)}° Pitch=${pitch.toFixed(1)}° Roll=${roll.toFixed(1)}° Yaw=${yaw.toFixed(1)}° → CVA=${derivedCva.toFixed(2)}°`;
+            }
+
+            const nowStr = new Date().toTimeString().split(' ')[0];
+            usbSeqId++;
+            document.getElementById('latest-id').textContent = '#' + usbSeqId + ' (USB)';
+            document.getElementById('latest-ts').textContent = nowStr;
+            document.getElementById('latest-angles-line').textContent =
+                `c7=${c7.toFixed(1)}° | pitch=${pitch.toFixed(1)}° | roll=${roll.toFixed(1)}° | yaw=${yaw.toFixed(1)}° → CVA=${derivedCva.toFixed(2)}°`;
+
+            // บันทึกลง CSV + DB อย่างน้อยทุก 500ms โดยจำกัด 1 request in-flight
+            const nowMs = Date.now();
+            if (!usbSaveInFlight && (nowMs - lastUsbDbSaveMs >= 500)) {
+                lastUsbDbSaveMs = nowMs;
+                usbSaveInFlight = true;
+                const savePacket = {
+                    protocol_version: 1,
+                    boot_id: obj.boot_id,
+                    calibration_id: obj.calibration_id,
+                    calibrated: true,
+                    valid: true,
+                    c7_estimated: Boolean(obj.c7_estimated),
+                    c7_angle: Number(c7.toFixed(2)),
+                    head_pitch: Number(pitch.toFixed(2)),
+                    head_roll: Number(roll.toFixed(2)),
+                    head_yaw: Number(yaw.toFixed(2)),
+                    cva_angle: derivedCva
+                };
+                sendAnglesToDb(savePacket, true)
+                    .catch(() => {})
+                    .finally(() => { usbSaveInFlight = false; });
+            }
+
+            usbLocalHistory.unshift({
+                id: usbSeqId,
+                c7_angle: Number(c7.toFixed(2)),
+                head_pitch: Number(pitch.toFixed(2)),
+                head_roll: Number(roll.toFixed(2)),
+                head_yaw: Number(yaw.toFixed(2)),
+                cva_angle: derivedCva,
+                created_at: nowStr
+            });
+            if (usbLocalHistory.length > 15) usbLocalHistory.pop();
+            renderHistoryTable(usbLocalHistory);
+        }
 
         async function startReadingUsbPort(port) {
             const monitorEl = document.getElementById('usb-raw-monitor');
+            const myGen = ++usbSessionGen;
 
-            // หากมี reader เก่าเปิดค้างอยู่ ให้ปิดก่อน
+            stopAutoSimStream();
+            dbFetchGeneration++;
+
             if (activeUsbReader) {
                 keepUsbReading = false;
                 try { await activeUsbReader.cancel(); } catch (e) {}
@@ -1568,50 +2047,71 @@
             }
 
             if (!port.readable) {
+                appendUsbStepLog('USB-OPEN', 'กำลังเปิดพอร์ต Serial @ 115200 baud...');
                 await port.open({ baudRate: 115200 });
             }
 
             // สำคัญสำหรับ ESP32 (CP2102): ปลด DTR/RTS เป็น false เพื่อไม่ให้ ESP32 ค้างในโหมด Reset
             try {
                 await port.setSignals({ dataTerminalReady: false, requestToSend: false });
-            } catch (e) {}
+                appendUsbStepLog('USB-SIGNAL', 'ปลดสัญญาณ DTR=false, RTS=false เรียบร้อย (ESP32 กำลังบูต)');
+            } catch (e) {
+                appendUsbStepLog('USB-SIGNAL', `ไม่สามารถตั้งค่า DTR/RTS: ${e.message || e}`, 'warn');
+            }
+
+            if (myGen !== usbSessionGen) return;
 
             activeUsbPort = port;
             usbHardwareUnplugged = false;
             keepUsbReading = true;
             isUsbConnected = true;
-            isPolling = false; // ปิดการเอาค่าเก่าจาก DB มาทับค่าสดจากสาย USB
+            usbHasValidMeasurement = false;
+            loggedFirstValidJson = false;
+            lastLoggedInvalidKey = '';
+            usbInvalidReason = 'WAITING FOR ESP32 STREAM...';
+            isPolling = false;
+            resetSensorBadges();
+            appendUsbStepLog('USB-READY', 'เชื่อมต่อสำเร็จ กำลังรอรับข้อมูลบรรทัดแรกจาก ESP32...');
 
             const pollBtn = document.getElementById('btn-toggle-poll');
             if (pollBtn) {
                 pollBtn.classList.remove('active');
-                pollBtn.innerHTML = '<span>🔌 กำลังใช้ค่าสดจากสาย USB โดยตรง (บันทึกเข้า DB อัตโนมัติ)</span>';
+                pollBtn.innerHTML = '<span>🔌 กำลังรับค่าสดจากสาย USB (Protocol v1)</span>';
             }
 
             const btn = document.getElementById('btn-usb-serial');
             btn.classList.add('active');
-            btn.innerHTML = '<span>✅ เชื่อมต่อสาย USB สำเร็จ (กำลังรับค่าสดจาก ESP32)</span>';
+            btn.innerHTML = '<span>✅ เชื่อมต่อ USB สำเร็จ (คลิกอีกครั้งเพื่อปล่อยพอร์ตอัปโหลดโค้ด)</span>';
             document.getElementById('stream-status-pill').textContent = 'USB DIRECT LIVE (5 Hz)';
             document.getElementById('stream-status-pill').style.color = 'var(--cyan)';
-            document.getElementById('db-source-badge').textContent = 'USB SERIAL DIRECT CONNECTED ●';
+            document.getElementById('db-source-badge').textContent = 'USB PROTOCOL v1 CONNECTED ●';
             if (monitorEl) {
                 monitorEl.style.color = 'var(--cyan)';
-                monitorEl.textContent = '⏳ เปิดพอร์ตสำเร็จ กำลังรอรับข้อมูลจาก ESP32...';
+                monitorEl.textContent = '⏳ เปิดพอร์ตสำเร็จ กำลังรอรับข้อมูล Protocol v1 จาก ESP32...';
             }
 
             const textDecoder = new TextDecoder('utf-8', { fatal: false });
             let buffer = '';
+            let gotFirstBytes = false;
 
-            // W3C Resilient Loop: รองรับกรณี ESP32 รีเซ็ตตอนเปิดพอร์ต (74880 baud -> 115200 baud) โดยไม่หลุด
-            while (port.readable && keepUsbReading) {
+            while (port.readable && keepUsbReading && myGen === usbSessionGen) {
                 const reader = port.readable.getReader();
                 activeUsbReader = reader;
                 try {
-                    while (keepUsbReading) {
+                    while (keepUsbReading && myGen === usbSessionGen) {
                         const { value, done } = await reader.read();
                         if (done) break;
                         if (value) {
+                            if (!gotFirstBytes) {
+                                gotFirstBytes = true;
+                                appendUsbStepLog('USB-RX', `ได้รับข้อมูลชุดแรกจาก ESP32 แล้ว (${value.byteLength} bytes)`);
+                            }
                             buffer += textDecoder.decode(value, { stream: true });
+                            if (buffer.length > 8192 && !buffer.includes('\n')) {
+                                appendUsbStepLog('USB-RX', 'บัฟเฟอร์ยาวเกิน 8KB โดยไม่มี \\n — ล้างบัฟเฟอร์', 'warn');
+                                buffer = '';
+                                continue;
+                            }
                             const lines = buffer.split(/\r?\n/);
                             buffer = lines.pop();
 
@@ -1619,87 +2119,94 @@
                                 const trimmed = line.trim();
                                 if (!trimmed) continue;
 
-                                let parsed = null;
-                                const sIdx = trimmed.indexOf('{');
-                                const eIdx = trimmed.lastIndexOf('}');
-                                if (sIdx !== -1 && eIdx > sIdx) {
-                                    try {
-                                        const obj = JSON.parse(trimmed.substring(sIdx, eIdx + 1));
-                                        const rawPitch = parseFloat(obj.head_pitch ?? obj.pitch ?? obj.p ?? 0);
-                                        const rawRoll  = parseFloat(obj.head_roll  ?? obj.roll  ?? obj.r ?? 0);
-                                        const rawYaw   = parseFloat(obj.head_yaw   ?? obj.yaw   ?? obj.y ?? 0);
-                                        const rawC7    = (typeof obj.c7_angle !== 'undefined') ? parseFloat(obj.c7_angle) : (-9.0 + rawPitch * 0.65);
-                                        parsed = normalizeRawSensorToBiomechanics(rawC7, rawPitch, rawRoll, rawYaw);
-                                    } catch (e) {}
-                                }
+                                try {
+                                    if (handleUsbNonJsonLine(trimmed, monitorEl)) continue;
 
-                                if (parsed && typeof parsed.c7_angle !== 'undefined') {
-                                    usbPacketCount++;
-                                    if (monitorEl) {
-                                        monitorEl.style.color = 'var(--cyan)';
-                                        monitorEl.textContent = `📥 [รับแล้ว ${usbPacketCount}]: ${trimmed.substring(0, 85)}`;
+                                    const sIdx = trimmed.indexOf('{');
+                                    const eIdx = trimmed.lastIndexOf('}');
+                                    if (sIdx !== -1 && eIdx > sIdx) {
+                                        try {
+                                            const jsonSlice = trimmed.substring(sIdx, eIdx + 1);
+                                            const obj = JSON.parse(jsonSlice);
+                                            if (obj && typeof obj === 'object') {
+                                                processUsbJsonPacket(obj, jsonSlice, monitorEl);
+                                            }
+                                        } catch (e) {
+                                            appendUsbStepLog('JSON-PARSE', `แปลง JSON ไม่สำเร็จ: ${trimmed.substring(0, 90)}`, 'warn');
+                                        }
+                                    } else {
+                                        appendUsbStepLog('ESP-RAW', trimmed);
                                     }
-
-                                    simState.targetC7    = parseFloat(parsed.c7_angle);
-                                    simState.targetPitch = parseFloat(parsed.head_pitch || 0);
-                                    simState.targetRoll  = parseFloat(parsed.head_roll  || 0);
-                                    simState.targetYaw   = parseFloat(parsed.head_yaw   || 0);
-                                    syncSlidersToTarget();
-
-                                    const nowStr = new Date().toTimeString().split(' ')[0];
-                                    usbSeqId++;
-                                    document.getElementById('latest-id').textContent = '#' + usbSeqId;
-                                    document.getElementById('latest-ts').textContent = nowStr;
-                                    document.getElementById('latest-angles-line').textContent =
-                                        `c7=${simState.targetC7.toFixed(1)}° | pitch=${simState.targetPitch.toFixed(1)}° | roll=${simState.targetRoll.toFixed(1)}° | yaw=${simState.targetYaw.toFixed(1)}° → CVA=${Number(parsed.cva_angle || 52.05).toFixed(2)}°`;
-
-                                    // บันทึกลง CSV และ Dual DB ทุกๆ 500ms (โดยไม่ทำให้ Live Server รีเฟรชหน้าเว็บ)
-                                    const nowMs = Date.now();
-                                    if (nowMs - lastUsbDbSaveMs >= 500) {
-                                        lastUsbDbSaveMs = nowMs;
-                                        sendAnglesToDb(parsed, true).catch(() => {});
-                                    }
-
-                                    usbLocalHistory.unshift({
-                                        id: usbSeqId,
-                                        c7_angle: simState.targetC7,
-                                        head_pitch: simState.targetPitch,
-                                        head_roll: simState.targetRoll,
-                                        head_yaw: simState.targetYaw,
-                                        cva_angle: parsed.cva_angle || 52.05,
-                                        created_at: nowStr
-                                    });
-                                    if (usbLocalHistory.length > 15) usbLocalHistory.pop();
-                                    renderHistoryTable(usbLocalHistory);
+                                } catch (lineErr) {
+                                    appendUsbStepLog('JS-ERR', `${lineErr.message || lineErr}`, 'error');
                                 }
                             }
                         }
                     }
                 } catch (streamErr) {
-                    // กรณีเกิด FramingError / BreakError ช่วง ESP32 บูตเครื่อง ให้วนลูปเปิด reader ใหม่ทันทีโดยไม่ตัดการเชื่อมต่อ
-                    console.warn('Recoverable UART stream event:', streamErr);
+                    appendUsbStepLog('USB-ERR', `UART stream event: ${streamErr.message || streamErr}`, 'warn');
                 } finally {
                     try { reader.releaseLock(); } catch (e) {}
-                    activeUsbReader = null;
+                    if (activeUsbReader === reader) activeUsbReader = null;
                 }
                 await new Promise(r => setTimeout(r, 80));
             }
 
-            // แจ้งเตือนเฉพาะกรณีที่สาย USB หลุดจากเครื่องจริงๆ เท่านั้น
-            if (usbHardwareUnplugged) {
+            if (myGen === usbSessionGen && usbHardwareUnplugged) {
                 isUsbConnected = false;
+                usbHasValidMeasurement = false;
+                resetSensorBadges();
                 btn.classList.remove('active');
                 btn.innerHTML = '<span>🔌 สาย USB หลุด! กดเพื่อเชื่อมต่อ ESP32 ใหม่อีกครั้ง</span>';
                 document.getElementById('stream-status-pill').textContent = 'USB DISCONNECTED';
                 document.getElementById('stream-status-pill').style.color = 'var(--crimson)';
                 if (monitorEl) {
                     monitorEl.style.color = 'var(--crimson)';
-                    monitorEl.textContent = '⚠️ สาย USB หลุดการเชื่อมต่อ! กรุณาถอดสาย USB เสียบใหม่ให้แน่น แล้วกดปุ่มเชื่อมต่ออีกครั้ง';
+                    monitorEl.textContent = '⚠️ สาย USB หลุดการเชื่อมต่อ! กรุณาเสียบสายใหม่ให้แน่น แล้วกดปุ่มเชื่อมต่ออีกครั้ง';
                 }
             }
         }
 
+        async function disconnectUsbSerial() {
+            usbSessionGen++;
+            keepUsbReading = false;
+            isUsbConnected = false;
+            usbHasValidMeasurement = false;
+            i2cScanCollecting = false;
+            if (i2cScanGuardTimer) {
+                clearTimeout(i2cScanGuardTimer);
+                i2cScanGuardTimer = null;
+            }
+            if (activeUsbReader) {
+                try { await activeUsbReader.cancel(); } catch (e) {}
+                try { activeUsbReader.releaseLock(); } catch (e) {}
+                activeUsbReader = null;
+            }
+            if (activeUsbPort) {
+                try { await activeUsbPort.close(); } catch (e) {}
+                activeUsbPort = null;
+            }
+            resetSensorBadges();
+            const btn = document.getElementById('btn-usb-serial');
+            if (btn) {
+                btn.classList.remove('active');
+                btn.innerHTML = '<span>🔌 เชื่อมต่อ ESP32 ผ่านสาย USB Serial โดยตรง</span>';
+            }
+            document.getElementById('stream-status-pill').textContent = 'USB RELEASED';
+            document.getElementById('stream-status-pill').style.color = 'var(--amber)';
+            document.getElementById('db-source-badge').textContent = 'USB PORT RELEASED (พร้อมอัปโหลดโค้ด)';
+            const monitorEl = document.getElementById('usb-raw-monitor');
+            if (monitorEl) {
+                monitorEl.style.color = 'var(--amber)';
+                monitorEl.textContent = '🔌 ปล่อยพอร์ต USB เรียบร้อยแล้ว (กด Upload ใน Arduino IDE ได้เลย แล้วค่อยกดปุ่มเชื่อมต่อใหม่)';
+            }
+        }
+
         async function connectUsbSerial() {
+            if (isUsbConnected || activeUsbPort) {
+                await disconnectUsbSerial();
+                return;
+            }
             if (!('serial' in navigator)) {
                 alert('เบราว์เซอร์นี้ไม่รองรับ Web Serial API\nกรุณาเปิดหน้านี้ด้วย Google Chrome หรือ Microsoft Edge ครับ');
                 return;
@@ -1728,10 +2235,15 @@
             requestAnimationFrame(renderLoop);
 
             if ('serial' in navigator) {
-                navigator.serial.addEventListener('disconnect', () => {
+                navigator.serial.addEventListener('disconnect', (event) => {
+                    if (activeUsbPort && event.target && event.target !== activeUsbPort) {
+                        return; // อุปกรณ์ Serial อื่นหลุด ไม่เกี่ยวกับพอร์ต ESP32 ที่กำลังใช้งาน
+                    }
                     usbHardwareUnplugged = true;
                     keepUsbReading = false;
                     isUsbConnected = false;
+                    usbHasValidMeasurement = false;
+                    resetSensorBadges();
                     const btn = document.getElementById('btn-usb-serial');
                     const monitorEl = document.getElementById('usb-raw-monitor');
                     if (btn) {

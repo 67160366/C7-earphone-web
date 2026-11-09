@@ -6,8 +6,8 @@
  *   Returns the latest posture angle record AND the last 15 rows of history from:
  *     1. XAMPP MySQL (`c7_posture_db`.`posture_logs`) if MySQL is active
  *     2. Fallback to `/C7/api/posture_logs.csv` & `latest_angle.json`
- *   Used by `live_test.html` and `index.html` to drive the 3D neck model and
- *   display the live database log table.
+ *   Used by the dev page. Protocol v2 rows carry mpu_tilt (c7_angle is null);
+ *   v1 rows carry c7_angle (mpu_tilt is the unmixed value when an MPU was present).
  * ============================================================================
  */
 
@@ -25,6 +25,9 @@ $row = null;
 $history = [];
 $totalRows = 0;
 
+/** Empty or missing -> null, so v2 rows (no c7_angle) and v1 rows (no mpu_tilt) stay distinguishable. */
+function num_or_null($v) { return ($v === null || $v === '') ? null : (float)$v; }
+
 // 1. Try reading latest row & recent 15 rows from MySQL `c7_posture_db`.`posture_logs`
 try {
     $xamppSock = '/Applications/XAMPP/xamppfiles/var/mysql/mysql.sock';
@@ -37,12 +40,14 @@ try {
     ]);
     $mysqlConnected = true;
 
-    $stmt = $pdo->query("SELECT id, c7_angle, head_pitch, head_roll, head_yaw, cva_angle, created_at FROM posture_logs ORDER BY id DESC LIMIT 15");
+    $stmt = $pdo->query("SELECT id, c7_angle, mpu_tilt, protocol_version, head_pitch, head_roll, head_yaw, cva_angle, created_at FROM posture_logs ORDER BY id DESC LIMIT 15");
     $dbRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($dbRows as $r) {
         $item = [
             'id'         => (int)$r['id'],
-            'c7_angle'   => (float)$r['c7_angle'],
+            'protocol_version' => (int)$r['protocol_version'],
+            'c7_angle'   => num_or_null($r['c7_angle']),
+            'mpu_tilt'   => num_or_null($r['mpu_tilt']),
             'head_pitch' => (float)$r['head_pitch'],
             'head_roll'  => (float)$r['head_roll'],
             'head_yaw'   => (float)$r['head_yaw'],
@@ -73,7 +78,9 @@ if (count($history) === 0 && file_exists($csvFile)) {
             if (count($cols) >= 7) {
                 $history[] = [
                     'id'         => (int)$cols[0],
-                    'c7_angle'   => (float)$cols[1],
+                    'protocol_version' => isset($cols[8]) ? (int)$cols[8] : 1,
+                    'c7_angle'   => num_or_null($cols[1]),
+                    'mpu_tilt'   => num_or_null($cols[7] ?? null),
                     'head_pitch' => (float)$cols[2],
                     'head_roll'  => (float)$cols[3],
                     'head_yaw'   => (float)$cols[4],
@@ -91,10 +98,12 @@ if (count($history) === 0 && file_exists($csvFile)) {
 // 3. Fallback to `latest_angle.json`
 if ($row === null && file_exists($latestFile)) {
     $cached = @json_decode(@file_get_contents($latestFile), true);
-    if (is_array($cached) && isset($cached['c7_angle'])) {
+    if (is_array($cached) && isset($cached['head_pitch'])) {
         $row = [
             'id'         => (int)($cached['id'] ?? 1),
-            'c7_angle'   => (float)$cached['c7_angle'],
+            'protocol_version' => (int)($cached['protocol_version'] ?? 1),
+            'c7_angle'   => num_or_null($cached['c7_angle'] ?? null),
+            'mpu_tilt'   => num_or_null($cached['mpu_tilt'] ?? null),
             'head_pitch' => (float)$cached['head_pitch'],
             'head_roll'  => (float)$cached['head_roll'],
             'head_yaw'   => (float)$cached['head_yaw'],
@@ -109,7 +118,9 @@ if ($row === null && file_exists($latestFile)) {
 if ($row === null) {
     $row = [
         'id'         => 1,
-        'c7_angle'   => -9.00,
+        'protocol_version' => 2,
+        'c7_angle'   => null,
+        'mpu_tilt'   => 0.00,
         'head_pitch' => 0.00,
         'head_roll'  => 0.00,
         'head_yaw'   => 0.00,

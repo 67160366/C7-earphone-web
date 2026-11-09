@@ -4,7 +4,7 @@
 #include <esp_system.h>
 
 // ============================================================================
-// C7-BIOSYNC // USB SERIAL PROTOCOL v1 (HARDWARE WIRE + SAFE 32B SHTP DRIVER)
+// C7-BIOSYNC // USB SERIAL PROTOCOL v2 (HARDWARE WIRE + SAFE 32B SHTP DRIVER)
 // - ใช้ Hardware Wire(21/22) ที่บอร์ดตรวจเจอ ACK ทั้ง 0x4B, 0x4A, 0x68 แน่นอนแล้ว
 // - แทนที่ไลบรารี SparkFun_BNO080 ด้วยคลาส SafeBNO085 ที่ออกแบบมาแก้บั๊ก
 //   Guru Meditation Error: StoreProhibited (IDFGH-13589 ของ ESP32 Core 3.0.x):
@@ -345,7 +345,7 @@ uint16_t lastRepRight   = 0;
 const unsigned long EAR_POLL_MS      = 15;   // อ่าน BNO085 ทุก 15 ms (~66 Hz)
 const unsigned long C7_POLL_MS       = 20;   // อ่าน MPU6050 ทุก 20 ms (50 Hz)
 const unsigned long SEND_INTERVAL_MS = 200;  // ส่ง JSON ออก USB ทุก 200 ms (5 Hz)
-const unsigned long SENSOR_STALE_MS  = 500;  // อายุข้อมูลสดสูงสุดตาม Protocol v1
+const unsigned long SENSOR_STALE_MS  = 500;  // อายุข้อมูลสดสูงสุดตาม Protocol v2
 const unsigned long DIAG_LOG_MS      = 1000; // ส่ง [ESP-LOG] สรุปสถานะทุก 1 วินาที
 const unsigned long HEALTH_CHECK_MS  = 3000; // เช็คสายหลุด/ต่อใหม่อัตโนมัติทุก 3 วินาที
 
@@ -365,7 +365,8 @@ float offsetC7     = 0.0f;
 
 // มุมสุทธิหลังตั้งศูนย์
 float headPitch = 0.0f, headRoll = 0.0f, headYaw = 0.0f;
-float c7Angle   = -9.0f;
+float mpuTilt   = 0.0f;   // มุม MPU ที่ C7 เปลี่ยนจากตอนตั้งศูนย์ (ไม่ปน head pitch)
+bool  mpuTiltOk = false;
 float cvaAngle  = 52.05f;
 
 void logStep(const String &msg) {
@@ -467,38 +468,39 @@ void quaternionToEulerDeg(float qw, float qx, float qy, float qz, float &pitch, 
   yaw = atan2f(siny, cosy) * (180.0f / PI);
 }
 
-void rotateEulerYZ(float pitchDeg, float yawDeg, float rollDeg,
-                   float vx, float vy, float vz, float &outY, float &outZ) {
-  const float rx = pitchDeg * (PI / 360.0f);
-  const float ry = yawDeg   * (PI / 360.0f);
-  const float rz = rollDeg  * (PI / 360.0f);
-  const float cx = cosf(rx), sx = sinf(rx);
-  const float cy = cosf(ry), sy = sinf(ry);
-  const float cz = cosf(rz), sz = sinf(rz);
+// ---------- CVA geometry 1 (ต้องตรงกับ assets/c7-core.js และ api/save_angle.php; อธิบายใน docs/FORMULA.md) ----------
+// แบบจำลอง 2 ท่อนในระนาบด้านข้าง หน่วย cm: C7 = จุดกำเนิด, z = ไปหน้า, y = ขึ้น, มุมบวก = เอนหน้า/ก้ม
+//   phi = phi0 + gain * tilt          แนวคอ C7->C0 วัดจากแนวดิ่ง
+//   C0  = R(phi) * (0, L)
+//   T   = C0 + R(pitch) * (tz, ty)     ติ่งหูหมุนรอบ C0 ตามหัว
+//   CVA = atan2(T.y, T.z)
+// roll/yaw ไม่เข้าสูตร เพราะ CVA เป็นมุมด้านข้าง
+const int   CVA_GEOMETRY_ID   = 1;
+const float CVA_NECK_LEN_CM   = 12.0f;   // สมมติ: ระยะ C7-C0 (10-13 cm)
+const float CVA_TRAGUS_FWD_CM = 1.0f;    // สมมติ: ติ่งหูอยู่หน้า C0
+const float CVA_TRAGUS_UP_CM  = 2.0f;    // สมมติ: ติ่งหูอยู่สูงกว่า C0
+const float CVA_TILT_GAIN     = 1.0f;    // สมมติ: แนวคอหมุนเท่ามุม MPU
+const float CVA_EST_GAIN      = 0.5f;    // สมมติ: ไม่มี MPU ให้เดาคอส่วนล่างงอครึ่งหนึ่งของการก้ม (เฉพาะก้ม)
+const float CVA_NEUTRAL_DEG   = 52.05f;  // ท่าตั้งศูนย์
+float cvaPhi0Deg = 40.058f;              // คำนวณใหม่ใน computeCvaPhi0() ตอนบูต
 
-  float qw = cy * cx * cz + sy * sx * sz;
-  float qx = cy * sx * cz + sy * cx * sz;
-  float qy = sy * cx * cz - cy * sx * sz;
-  float qz = cy * cx * sz - sy * sx * cz;
-
-  float len = sqrtf(qw * qw + qx * qx + qy * qy + qz * qz);
-  if (len == 0.0f) len = 1.0f;
-  qw /= len; qx /= len; qy /= len; qz /= len;
-
-  const float uvx = qy * vz - qz * vy;
-  const float uvy = qz * vx - qx * vz;
-  const float uvz = qx * vy - qy * vx;
-
-  outY = vy + 2.0f * qw * uvy + 2.0f * (qz * uvx - qx * uvz);
-  outZ = vz + 2.0f * qw * uvz + 2.0f * (qx * uvy - qy * uvx);
+// แก้สมการ L*cos(phi0 + N) = tz*sin(N) - ty*cos(N) ให้ท่าตั้งศูนย์ได้ CVA = N พอดี
+void computeCvaPhi0() {
+  const double n = CVA_NEUTRAL_DEG * (PI / 180.0);
+  double k = (CVA_TRAGUS_FWD_CM * sin(n) - CVA_TRAGUS_UP_CM * cos(n)) / CVA_NECK_LEN_CM;
+  if (k > 1.0) k = 1.0;
+  if (k < -1.0) k = -1.0;
+  cvaPhi0Deg = (float)(acos(k) * (180.0 / PI) - CVA_NEUTRAL_DEG);
 }
 
-float calculateCVA(float c7Deg, float headPitchDeg, float headRollDeg, float headYawDeg) {
-  const float neckTilt = 4.2f + c7Deg * 1.02f + max(0.0f, headPitchDeg * 0.16f);
-  float neckY = 0.0f, neckZ = 0.0f, earY = 0.0f, earZ = 0.0f;
-  rotateEulerYZ(neckTilt, headYawDeg * 0.35f, headRollDeg * 0.4f, 0.0f, 0.985f, 0.0f, neckY, neckZ);
-  rotateEulerYZ(headPitchDeg, headYawDeg, headRollDeg, 0.0f, 0.12f, 0.2505f, earY, earZ);
-  return atan2f(0.04f + neckY + earY, max(0.15f, 0.725f + neckZ + earZ)) * (180.0f / PI);
+// tiltDeg ใช้เมื่อ hasTilt = true; ถ้าไม่มี MPU จะประมาณจาก head pitch แทน
+float calculateCVA(bool hasTilt, float tiltDeg, float headPitchDeg) {
+  const float used = hasTilt ? tiltDeg : CVA_EST_GAIN * max(0.0f, headPitchDeg);
+  const float phi = (cvaPhi0Deg + CVA_TILT_GAIN * used) * (PI / 180.0f);
+  const float th  = headPitchDeg * (PI / 180.0f);
+  const float tz = CVA_NECK_LEN_CM * sinf(phi) + CVA_TRAGUS_FWD_CM * cosf(th) + CVA_TRAGUS_UP_CM * sinf(th);
+  const float ty = CVA_NECK_LEN_CM * cosf(phi) - CVA_TRAGUS_FWD_CM * sinf(th) + CVA_TRAGUS_UP_CM * cosf(th);
+  return atan2f(ty, tz) * (180.0f / PI);
 }
 
 bool initMpu6050AtC7() {
@@ -799,12 +801,13 @@ void setup() {
 
   bootId = esp_random();
   if (bootId == 0) bootId = 1;
+  computeCvaPhi0();
 
   Serial.begin(115200);
   delay(500);
 
   Serial.println("\n============================================");
-  Serial.println("🚀 C7-BIOSYNC PROTOCOL v1 (HARDWARE WIRE + SAFE 32B SHTP)");
+  Serial.println("🚀 C7-BIOSYNC PROTOCOL v2 (HARDWARE WIRE + SAFE 32B SHTP)");
   Serial.println("============================================");
   logStep("STEP 1/6: Booting ESP32 (boot_id=" + String(bootId) + ")");
 
@@ -1076,14 +1079,11 @@ void loop() {
     headRoll  = round2Dec(clampDeg(relRoll,  -30.0f, 30.0f));
     headYaw   = round2Dec(clampDeg(relYaw,   -40.0f, 40.0f));
 
-    if (c7Fresh) {
-      const float deltaC7 = wrapDeg(rawC7Angle - offsetC7);
-      c7Angle = round2Dec(clampDeg(-9.0f + deltaC7 + (headPitch * 0.35f), -15.0f, 35.0f));
-    } else {
-      c7Angle = round2Dec(clampDeg(-9.0f + (headPitch * 0.65f), -15.0f, 35.0f));
-    }
+    // v2: ส่งมุม MPU แยกจาก head pitch ไม่ผสมกัน (v1 เคยผสม 0.35*pitch ทำให้สัญญาณคอยื่นหักล้างกัน)
+    mpuTiltOk = c7Fresh;
+    mpuTilt = c7Fresh ? round2Dec(clampDeg(wrapDeg(rawC7Angle - offsetC7), -30.0f, 40.0f)) : 0.0f;
 
-    cvaAngle = round2Dec(calculateCVA(c7Angle, headPitch, headRoll, headYaw));
+    cvaAngle = round2Dec(calculateCVA(mpuTiltOk, mpuTilt, headPitch));
   }
 
   // 5. ส่ง [ESP-LOG] สรุปสถานะช่วงบูต 8 วินาทีแรก หรือเมื่อยังไม่มีสัญญาณสด
@@ -1096,25 +1096,27 @@ void loop() {
             ") | C7(fresh=" + String(c7Fresh ? 1 : 0) + ")");
   }
 
-  // 6. ส่ง JSON ตามสัญญา Protocol v1 ทุกๆ 200 ms (5 Hz)
+  // 6. ส่ง JSON ตามสัญญา Protocol v2 ทุกๆ 200 ms (5 Hz)
   if (nowMs - lastSendMs >= SEND_INTERVAL_MS) {
     lastSendMs = nowMs;
 
     String jsonPayload;
-    jsonPayload.reserve(460);
-    jsonPayload = "{\"protocol_version\":1,";
+    jsonPayload.reserve(520);
+    jsonPayload = "{\"protocol_version\":2,";
+    jsonPayload += "\"geometry_id\":" + String(CVA_GEOMETRY_ID) + ",";
     jsonPayload += "\"boot_id\":" + String(bootId) + ",";
     jsonPayload += "\"calibration_id\":" + String(calibrationId) + ",";
     jsonPayload += "\"calibrated\":" + String(autoZeroDone ? "true" : "false") + ",";
     jsonPayload += "\"valid\":" + String(valid ? "true" : "false") + ",";
-    jsonPayload += "\"c7_estimated\":" + String(c7Fresh ? "false" : "true") + ",";
+    jsonPayload += "\"tilt_estimated\":" + String(c7Fresh ? "false" : "true") + ",";
     jsonPayload += "\"sensors\":{\"left_present\":" + String(hasLeftEar ? "true" : "false");
     jsonPayload += ",\"right_present\":" + String(hasRightEar ? "true" : "false");
     jsonPayload += ",\"c7_present\":" + String(hasC7Mpu ? "true" : "false");
     jsonPayload += ",\"left_fresh\":" + String(leftFresh ? "true" : "false");
     jsonPayload += ",\"right_fresh\":" + String(rightFresh ? "true" : "false");
     jsonPayload += ",\"c7_fresh\":" + String(c7Fresh ? "true" : "false") + "},";
-    jsonPayload += "\"c7_angle\":"   + (valid ? String(c7Angle, 2)   : String("null")) + ",";
+    jsonPayload += "\"mpu_tilt\":"     + ((valid && mpuTiltOk) ? String(mpuTilt, 2) : String("null")) + ",";
+    jsonPayload += "\"mpu_tilt_raw\":" + (c7Fresh ? String(round2Dec(rawC7Angle), 2) : String("null")) + ",";
     jsonPayload += "\"head_pitch\":" + (valid ? String(headPitch, 2) : String("null")) + ",";
     jsonPayload += "\"head_roll\":"  + (valid ? String(headRoll, 2)  : String("null")) + ",";
     jsonPayload += "\"head_yaw\":"   + (valid ? String(headYaw, 2)   : String("null")) + ",";

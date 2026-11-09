@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>C7-BioSync dev</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 26h22M6 26 19 8' stroke='%230F6E66' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3Ccircle cx='19' cy='8' r='3.5' fill='%230F6E66'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/dev.css">
+    <script type="importmap">{"imports":{"three":"./assets/vendor/three/three.module.js"}}</script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="wrap">
+            <a class="brand" href="./"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 26h22M5 26 18 8" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/><circle cx="18" cy="8" r="3.5" fill="currentColor"/></svg>C7-BioSync <span class="muted dev-tag">dev</span></a>
+            <span id="conn" class="chip" data-state="idle" role="status">ยังไม่เชื่อมต่อ</span>
+        </div>
+        <div class="wrap toolbar">
+            <button id="connect" class="btn btn-primary btn-sm" type="button">เชื่อมต่อ USB</button>
+            <button id="disconnect" class="btn btn-sm" type="button">ตัดการเชื่อมต่อ</button>
+            <span class="sep" aria-hidden="true"></span>
+            <button id="cmdZero" class="btn btn-sm" type="button" title="ส่ง z แล้วรอ calibration_id เปลี่ยน">Zero <kbd>z</kbd></button>
+            <button id="cmdCheck" class="btn btn-sm" type="button" title="ตรวจ 0x4B, 0x4A, 0x68">ตรวจ address <kbd>i</kbd></button>
+            <button id="cmdScan" class="btn btn-sm" type="button" title="สแกนบัส I2C ทั้งหมด">สแกน I2C <kbd>s</kbd></button>
+            <form id="rawForm" class="raw-form">
+                <label for="rawCmd" class="sr-only">คำสั่งดิบ</label>
+                <input id="rawCmd" type="text" class="mono" placeholder="คำสั่งดิบ เช่น z" autocomplete="off" spellcheck="false">
+                <button class="btn btn-sm" type="submit">ส่ง</button>
+            </form>
+        </div>
+    </header>
+
+    <main class="wrap dev-grid">
+        <details class="panel block formula" id="formulaBox" open>
+            <summary><h2>สูตรมุมคอ (CVA) ทีละขั้น</h2><span id="fSource" class="chip">ท่าตั้งศูนย์ (ยังไม่มีข้อมูล)</span></summary>
+            <p class="small muted">ค่าประมาณจากแบบจำลอง 2 ท่อนในระนาบด้านข้าง (geometry <span id="fGeo" class="mono">1</span>) เทียบกับท่าตอนตั้งศูนย์ ซึ่งบังคับให้เป็น 52.05° ไม่ใช่การวินิจฉัยทางการแพทย์ อธิบายเต็มใน <code>docs/FORMULA.md</code></p>
+            <div class="formula-visuals">
+                <figure class="fig">
+                    <svg id="fSvg" viewBox="-5 -18.5 23 21" role="img" aria-labelledby="fSvgTitle">
+                        <title id="fSvgTitle">ภาพด้านข้าง: C7, ข้อต่อหัวกับคอ C0, ติ่งหู และมุม CVA</title>
+                        <g class="grid" id="fGrid"></g>
+                        <line id="fHoriz" class="dash" />
+                        <line id="fVert" class="dash faint" />
+                        <path id="fArcCva" class="arc" />
+                        <path id="fArcPhi" class="arc faint" />
+                        <line id="fNeck" class="bone" />
+                        <line id="fHead" class="bone head" />
+                        <line id="fCvaLine" class="cva" />
+                        <circle id="fP7" r="0.45" class="pt c7" />
+                        <circle id="fP0" r="0.35" class="pt c0" />
+                        <circle id="fPT" r="0.45" class="pt tr" />
+                        <text id="fL7" class="lbl">C7</text>
+                        <text id="fL0" class="lbl">C0</text>
+                        <text id="fLT" class="lbl">ติ่งหู</text>
+                        <text id="fLNeck" class="lbl dim"></text>
+                        <text id="fLDist" class="lbl dim"></text>
+                        <text id="fLCva" class="lbl strong"></text>
+                        <text id="fLPhi" class="lbl dim"></text>
+                    </svg>
+                    <figcaption class="small muted">หน่วย cm ช่องตาราง 2 cm หน้าอยู่ทางขวา วาดจากตัวเลขชุดเดียวกับขั้นตอนด้านล่าง</figcaption>
+                </figure>
+                <figure class="fig">
+                    <div class="model-stage"><canvas id="fModel" aria-label="โมเดลศีรษะและคอ 3 มิติ ขยับตามค่าเดียวกัน"></canvas></div>
+                    <div class="segmented view-pick" role="radiogroup" aria-label="มุมมองโมเดล">
+                        <label><input type="radio" name="fView" value="side" checked><span>ด้านข้าง</span></label>
+                        <label><input type="radio" name="fView" value="angle"><span>3 มิติ</span></label>
+                        <label><input type="radio" name="fView" value="front"><span>ด้านหน้า</span></label>
+                    </div>
+                    <figcaption class="small muted" id="fModelInfo">กำลังโหลดโมเดล</figcaption>
+                </figure>
+            </div>
+
+            <h3>1. ค่าที่รับจากบอร์ด</h3>
+            <div class="table-scroll">
+                <table class="ftable">
+                    <thead><tr><th scope="col">ตัวแปร</th><th scope="col">ค่า</th><th scope="col">มาจากไหน</th><th scope="col">ชนิด</th></tr></thead>
+                    <tbody id="fInputs"></tbody>
+                </table>
+            </div>
+
+            <h3>2. ค่าคงที่ของแบบจำลอง</h3>
+            <div class="table-scroll">
+                <table class="ftable">
+                    <thead><tr><th scope="col">ชื่อ</th><th scope="col">ค่า</th><th scope="col">ที่มา</th><th scope="col">ชนิด</th></tr></thead>
+                    <tbody id="fConsts"></tbody>
+                </table>
+            </div>
+
+            <h3>3. คำนวณทีละบรรทัด</h3>
+            <ol class="steps" id="fSteps"></ol>
+
+            <h3>4. เทียบผล</h3>
+            <dl class="kv num" id="fCompare">
+                <div><dt>CVA หน้าเว็บ (สูตรนี้)</dt><dd id="fcWeb">–</dd></div>
+                <div><dt>CVA จากบอร์ด</dt><dd id="fcFw">–</dd></div>
+                <div><dt>สูตรเก่า v1 จะได้</dt><dd id="fcOld">–</dd></div>
+                <div><dt>ระดับท่า (เกณฑ์ปกติ)</dt><dd id="fcClass">–</dd></div>
+            </dl>
+            <p class="small muted" id="fcOldNote">สูตรเก่าผสม 0.35 × pitch เข้าไปในค่า C7 และนับ pitch 3 ครั้ง ตอนยื่นคอแล้วเงยหน้าสวน ค่าจึงดีขึ้นแทนที่จะแย่ลง</p>
+
+            <h3>5. ข้อจำกัด</h3>
+            <ul class="small limits">
+                <li>ค่าคงที่ส่วนใหญ่ยังเป็นค่าสมมติ ต้องปรับเทียบกับผู้ใส่จริงหลายท่า (ท่าปกติ, เก็บคาง, ยื่นคอ, ก้มดูโต๊ะ)</li>
+                <li>MPU ที่ C7 วัดเทียบแรงโน้มถ่วง ถ้าเอนตัวทั้งตัว ค่า tilt ก็ขึ้นด้วย จึงแยกเอนตัวกับคอยื่นไม่ได้ถ้าไม่มีเซ็นเซอร์ที่ลำตัว</li>
+                <li>การยื่นคองอคอช่วง C4–C7 เป็นหลัก ถ้า MPU ติดต่ำไปทางหลังส่วนบน อาจหมุนน้อยจนจับไม่ได้ ตำแหน่งติดต้องทดสอบจริง</li>
+                <li>ถ้าไม่มี MPU ค่า tilt เป็นการเดาจากการก้มหน้า (ประมาณ) จับคอยื่นที่หัวตรงไม่ได้</li>
+                <li>roll และ yaw ไม่เข้าสูตร เพราะ CVA เป็นมุมมองด้านข้าง</li>
+            </ul>
+        </details>
+
+        <section class="col">
+            <div class="panel block">
+                <h2>บอร์ด</h2>
+                <dl class="kv num">
+                    <div><dt>boot_id</dt><dd id="kBoot" class="mono">–</dd></div>
+                    <div><dt>calibration_id</dt><dd id="kCal" class="mono">–</dd></div>
+                    <div><dt>อัตราเฟรม</dt><dd id="kFps">–</dd></div>
+                    <div><dt>อายุเฟรมล่าสุด</dt><dd id="kAge">–</dd></div>
+                    <div><dt>valid / invalid</dt><dd id="kCount">–</dd></div>
+                    <div><dt>เหตุผลที่ข้อมูลใช้ไม่ได้</dt><dd id="kReason">–</dd></div>
+                </dl>
+            </div>
+
+            <div class="panel block">
+                <h2>เซ็นเซอร์</h2>
+                <div class="sensors">
+                    <div class="sensor" id="sL"><b>หูซ้าย</b><span class="mono">BNO 0x4A</span><em>–</em></div>
+                    <div class="sensor" id="sR"><b>หูขวา</b><span class="mono">BNO 0x4B</span><em>–</em></div>
+                    <div class="sensor" id="sC"><b>ต้นคอ C7</b><span class="mono">MPU 0x68</span><em>–</em></div>
+                </div>
+                <p id="scanResult" class="small muted">ยังไม่ได้สแกน I2C</p>
+            </div>
+
+            <div class="panel block">
+                <h2>มุม</h2>
+                <table class="angles num">
+                    <thead><tr><th scope="col">ค่า</th><th scope="col">องศา</th><th scope="col">ช่วงที่รับได้</th></tr></thead>
+                    <tbody>
+                        <tr><th scope="row" id="aTiltName">mpu_tilt</th><td id="aC7">–</td><td id="aTiltRange">−30 ถึง 40</td></tr>
+                        <tr><th scope="row">head_pitch</th><td id="aPitch">–</td><td>−25 ถึง 45</td></tr>
+                        <tr><th scope="row">head_roll</th><td id="aRoll">–</td><td>−30 ถึง 30</td></tr>
+                        <tr><th scope="row">head_yaw</th><td id="aYaw">–</td><td>−40 ถึง 40</td></tr>
+                        <tr><th scope="row">CVA จากบอร์ด</th><td id="aFw">–</td><td rowspan="2">ต่างกันได้ไม่เกิน 0.15</td></tr>
+                        <tr><th scope="row">CVA จากหน้าเว็บ</th><td id="aWeb">–</td></tr>
+                        <tr><th scope="row">ผลต่าง</th><td id="aDelta">–</td><td id="aClass">–</td></tr>
+                    </tbody>
+                </table>
+                <p class="small muted" id="aEst"></p>
+            </div>
+
+            <details class="panel block" id="axisBox" open>
+                <summary><h2>ตรวจทิศทางเซ็นเซอร์</h2></summary>
+                <p class="small muted">ใส่หูฟังจริงแล้วทำตามทีละท่า หน้านี้จะดูว่าแกนไหนขยับและเครื่องหมายตรงกับที่หน้าเว็บและสูตร CVA ใช้หรือไม่ ควรตั้งท่าเริ่มต้นก่อนเริ่ม</p>
+                <ol class="axis-steps small">
+                    <li>นั่งตรง มองตรง อยู่นิ่ง (เก็บค่าอ้างอิง)</li>
+                    <li>ก้มหน้า คางลงประมาณ 20° ค้างไว้</li>
+                    <li>กลับมาตรง แล้วเอียงหูขวาลงหาไหล่ขวา ค้างไว้</li>
+                    <li>กลับมาตรง แล้วหันหน้าไปทางซ้ายของตัวเอง ค้างไว้</li>
+                </ol>
+                <div class="row">
+                    <button id="axisStart" class="btn btn-sm" type="button">เริ่มตรวจ</button>
+                    <span id="axisStatus" class="small muted" role="status">ยังไม่ได้ตรวจ</span>
+                </div>
+                <div class="table-scroll">
+                    <table class="axis-result">
+                        <thead><tr><th scope="col">ท่า</th><th scope="col">ควรขยับ</th><th scope="col">ที่วัดได้ (Δ°)</th><th scope="col">ผล</th></tr></thead>
+                        <tbody id="axisRows">
+                            <tr><td>ก้มหน้า</td><td>head_pitch บวก</td><td>–</td><td>–</td></tr>
+                            <tr><td>เอียงหูขวาลง</td><td>head_roll บวก</td><td>–</td><td>–</td></tr>
+                            <tr><td>หันซ้าย</td><td>head_yaw บวก</td><td>–</td><td>–</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p id="axisAdvice" class="small"></p>
+            </details>
+
+            <details class="panel block" id="simBox">
+                <summary><h2>ข้อมูลจำลอง</h2></summary>
+                <p class="small muted">ส่ง packet จำลองผ่าน pipeline เดียวกับบอร์ดจริง ระหว่างนี้หน้าจะติดป้าย "ข้อมูลจำลอง" และไม่ได้ต่อ USB</p>
+                <div class="sim-controls">
+                    <label for="simTilt">tilt <output id="oTilt">0</output></label><input id="simTilt" type="range" min="-30" max="40" step="0.5" value="0">
+                    <label for="simPitch">pitch <output id="oPitch">0</output></label><input id="simPitch" type="range" min="-25" max="45" step="0.5" value="0">
+                    <label for="simRoll">roll <output id="oRoll">0</output></label><input id="simRoll" type="range" min="-30" max="30" step="0.5" value="0">
+                    <label for="simYaw">yaw <output id="oYaw">0</output></label><input id="simYaw" type="range" min="-40" max="40" step="0.5" value="0">
+                </div>
+                <label class="check small" for="simMpu"><input type="checkbox" id="simMpu" checked> มี MPU6050 ที่ต้นคอ (ถ้าไม่ติ๊ก บอร์ดจะส่ง mpu_tilt เป็น null และหน้าเว็บประมาณจาก pitch)</label>
+                <p class="small muted">tilt = มุม MPU ที่ C7 เปลี่ยนจากตอนตั้งศูนย์ ลอง tilt +12 กับ pitch −6 (คอยื่นแล้วเงยหน้าสวน) แล้วดูแผงสูตรด้านบน</p>
+                <div class="row">
+                    <button id="simStart" class="btn btn-sm" type="button">เริ่มข้อมูลจำลอง</button>
+                    <button id="simInject" class="btn btn-sm" type="button" title="ส่ง packet ที่ valid=false และมุมเป็น null">ส่ง packet ที่ใช้ไม่ได้</button>
+                </div>
+            </details>
+
+            <details class="panel block" id="apiBox">
+                <summary><h2>บันทึกลง API</h2></summary>
+                <label class="switch" for="apiOn"><span>ส่งข้อมูลที่ valid ไป <code>api/save_angle.php</code> ทุก 500 ms</span><input type="checkbox" id="apiOn" role="switch"></label>
+                <p class="small warn-text">เขียนต่อท้าย <code>api/posture_logs.csv</code> และ <code>api/latest_angle.json</code> ซึ่ง git track อยู่ และถ้าไม่มี MySQL แต่ละครั้งอาจใช้เวลา 6–8 วินาที</p>
+                <dl class="kv num">
+                    <div><dt>ส่งแล้ว</dt><dd id="apiCount">0</dd></div>
+                    <div><dt>ล่าสุด</dt><dd id="apiLast">–</dd></div>
+                </dl>
+                <div class="row">
+                    <button id="csvExport" class="btn btn-sm" type="button">ส่งออก CSV ของรอบนี้</button>
+                    <span id="csvCount" class="small muted">0 แถว</span>
+                </div>
+            </details>
+
+            <details class="panel block">
+                <summary><h2>ผังต่อสาย</h2></summary>
+                <div class="table-scroll">
+                    <table class="wiring">
+                        <thead><tr><th scope="col">อุปกรณ์</th><th scope="col">ขา</th><th scope="col">ต่อกับ ESP32</th></tr></thead>
+                        <tbody>
+                            <tr><th scope="row" rowspan="2">ทุกโมดูล</th><td>VIN / 3V3</td><td>3.3V</td></tr>
+                            <tr><td>GND</td><td>GND ร่วมกัน</td></tr>
+                            <tr><th scope="row">บัส I2C</th><td>SDA / SCL</td><td>GPIO 21 / GPIO 22</td></tr>
+                            <tr><th scope="row">BNO085 หูซ้าย</th><td>DI (ADR)</td><td>LOW (GND) → 0x4A</td></tr>
+                            <tr><th scope="row">BNO085 หูขวา</th><td>DI (ADR)</td><td>3.3V → 0x4B</td></tr>
+                            <tr><th scope="row">BNO085 ทั้งสอง</th><td>PS0 / PS1</td><td>LOW ทั้งคู่ (โหมด I2C)</td></tr>
+                            <tr><th scope="row">MPU6050 ต้นคอ</th><td>AD0</td><td>GND → 0x68 (ไม่บังคับ)</td></tr>
+                            <tr><th scope="row">มอเตอร์สั่น</th><td>IN</td><td>GPIO 25 (เฟิร์มแวร์ยังไม่สั่ง)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="small muted">ค่าเริ่มต้นของขา DI ต่างกันตามรุ่นบอร์ด ให้ยืนยันด้วยปุ่มสแกน I2C ห้ามต่อ 5V เข้าขา DI ของ BNO085 ปุ่ม BOOT (GPIO 0) บนบอร์ดใช้ตั้งท่าเริ่มต้นได้เหมือนคำสั่ง z</p>
+            </details>
+        </section>
+
+        <section class="col log-col">
+            <div class="panel log-panel">
+                <div class="log-head">
+                    <h2>Log</h2>
+                    <div class="segmented log-filter" role="radiogroup" aria-label="กรอง log">
+                        <label><input type="radio" name="lf" value="all" id="lfAll" checked><span>ทั้งหมด</span></label>
+                        <label><input type="radio" name="lf" value="json" id="lfJson"><span>JSON</span></label>
+                        <label><input type="radio" name="lf" value="log" id="lfLog"><span>ESP</span></label>
+                        <label><input type="radio" name="lf" value="i2c" id="lfI2c"><span>I2C</span></label>
+                        <label><input type="radio" name="lf" value="app" id="lfApp"><span>เว็บ</span></label>
+                    </div>
+                    <label class="switch compact" for="follow"><span class="small">เลื่อนตาม</span><input type="checkbox" id="follow" checked role="switch"></label>
+                    <button id="logClear" class="btn btn-quiet btn-sm" type="button">ล้าง</button>
+                </div>
+                <ol id="log" class="log mono" aria-live="off"></ol>
+            </div>
+            <div class="panel block">
+                <h2>JSON ล่าสุด</h2>
+                <pre id="lastJson" class="json mono">–</pre>
+            </div>
+        </section>
+    </main>
+
+    <script src="assets/c7-core.js"></script>
+    <script src="assets/dev-formula.js"></script>
+    <script src="assets/dev.js"></script>
+</body>
+</html>

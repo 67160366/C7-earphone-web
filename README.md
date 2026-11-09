@@ -1,18 +1,39 @@
-# C7-BioSync Earphone Posture Monitoring System (Protocol v1)
+# C7-BioSync Earphone Posture Monitoring System (Protocol v2)
 
-ระบบตรวจจับและวิเคราะห์มุมกระดูกคอ (Craniovertebral Angle: CVA) แบบ 3 มิติแบบเรียลไทม์ โดยใช้เซนเซอร์ BNO085 คู่ (ซ้าย-ขวา) ร่วมกับ MPU6050 ที่ต้นคอ (C7) และแสดงผลผ่านหน้าเว็บ 3D Workbench (`live_test.html`) ผ่าน Web Serial API
+ระบบตรวจจับและวิเคราะห์มุมกระดูกคอ (Craniovertebral Angle: CVA) แบบ 3 มิติแบบเรียลไทม์ โดยใช้เซนเซอร์ BNO085 คู่ (ซ้าย-ขวา) ร่วมกับ MPU6050 ที่ต้นคอ (C7) และแสดงผลผ่านหน้าเว็บที่เชื่อมหูฟังทาง USB โดยตรง (Web Serial API)
 
 ---
 
 ## 📂 ไฟล์หลักในเวอร์ชันนี้
 
 1. **[`esp32_c7_prototype/esp32_c7_prototype.ino`](esp32_c7_prototype/esp32_c7_prototype.ino)**
-   - โค้ด Arduino สำหรับบอร์ด ESP32 (Protocol v1)
+   - โค้ด Arduino สำหรับบอร์ด ESP32 (Protocol v2: ส่ง `mpu_tilt` แยกจาก `head_pitch`)
    - ใช้ไดรเวอร์ `SafeBNO085` ที่เขียนขึ้นใหม่เพื่อคุยโปรโตคอล SHTP แบบแบ่ง Chunk ละ 32 ไบต์
-   - รองรับการอ่านค่าセนเซอร์ BNO085 พร้อมกัน 2 ตัว (`0x4A` และ `0x4B`) และเซนเซอร์ต้นคอ MPU6050 (`0x68`)
-2. **[`live_test.html`](live_test.html)**
-   - หน้าเว็บ 3D Posture Workbench ที่ทำงานร่วมกับ ESP32 ผ่านสาย USB Serial (Web Serial API @ `115200` baud) ได้โดยตรง
-   - แสดงสถานะเซนเซอร์แยกแต่ละตัว (`L-A 0x4A`, `R-B 0x4B`, `C7 0x68`), สั่งสแกน I2C (`s`), สั่งตั้งศูนย์ (`z`), แสดงโมเดล 3D และบันทึกข้อมูลลง CSV / Database อัตโนมัติ
+   - รองรับการอ่านค่าเซนเซอร์ BNO085 พร้อมกัน 2 ตัว (`0x4A` และ `0x4B`) และเซนเซอร์ต้นคอ MPU6050 (`0x68`)
+2. **[`index.html`](index.html)** หน้าสำหรับผู้ใช้
+   - เชื่อมหูฟังด้วยปุ่มเดียว ดูโมเดลศีรษะและคอ 3 มิติ (3 มิติ / ด้านข้างพร้อมเส้น CVA / ด้านหน้า แสดงแบบกระจกเป็นค่าเริ่มต้น) สถานะท่า (ท่าดี / เริ่มก้มคอ / คอยื่น) และแถบ ก้ม-เงย / เอียงศีรษะ / หันหน้า
+   - ตั้งท่าเริ่มต้น และเตือนเมื่อคอยื่นนานเกินเวลาที่ตั้งไว้ ถ้ายังไม่มีหูฟัง เปิด `index.html?demo` เพื่อดูด้วยข้อมูลจำลอง (มีป้ายบอกตลอด)
+   - โมเดล 3 มิติใช้ Three.js ที่เก็บไว้ในเครื่อง (`assets/vendor`) และหัวสแกน CC BY 3.0 (`assets/models/head`) ต้องเปิดผ่าน http เช่น `http://127.0.0.1:8090/`
+3. **[`dev.html`](dev.html)** หน้าสำหรับนักพัฒนา
+   - แผง **สูตรมุมคอ (CVA) ทีละขั้น**: ค่าที่รับจากบอร์ดพร้อมที่มา, ค่าคงที่ (วัดได้ / สมมติ / คำนวณ), การคำนวณทีละบรรทัดด้วยตัวเลขจริง, ภาพด้านข้าง SVG, โมเดล 3 มิติที่ขยับตามค่าเดียวกัน และเทียบกับสูตรเก่า v1
+   - สถานะบอร์ด (boot_id, calibration_id, อัตราเฟรม), เซ็นเซอร์ 0x4A / 0x4B / 0x68, มุมดิบ, การเทียบ CVA ระหว่างบอร์ดกับเว็บ, log, คำสั่ง `z` / `i` / `s` / คำสั่งดิบ
+   - ตรวจทิศทางเซ็นเซอร์ทีละท่า (ก้ม / เอียงขวา / หันซ้าย) เพื่อดูว่าแกนและเครื่องหมายตรงกับที่หน้าเว็บใช้หรือไม่ ดู [`docs/SENSOR_AXES.md`](docs/SENSOR_AXES.md)
+   - บันทึกลง `api/save_angle.php` (ปิดไว้ก่อน), ส่งออก CSV, ข้อมูลจำลองแบบปรับมุมเอง และผังต่อสาย
+4. **[`assets/c7-core.js`](assets/c7-core.js)** โค้ดที่ทั้งสองหน้าใช้ร่วมกัน: สูตร CVA geometry 1 (ตรงกับ `calculateCVA()` ในเฟิร์มแวร์และ `api/save_angle.php` อธิบายใน [`docs/FORMULA.md`](docs/FORMULA.md)), การตรวจ Protocol v2 (รับ v1 ได้โดยถอด pitch ออกจาก `c7_angle`), การเชื่อม USB และข้อมูลจำลอง ดีไซน์อยู่ที่ [`docs/DESIGN.md`](docs/DESIGN.md)
+
+### เปิดใช้งาน
+
+ต้องมี PHP 8+ (หรือ XAMPP) และเปิดด้วย Chrome หรือ Edge บนคอมพิวเตอร์ (Web Serial):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1        # เปิด server
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1 -Stop  # ปิด server
+node scripts/check-web.mjs                                                     # เทสต์
+```
+
+แล้วเปิด http://127.0.0.1:8090/ (ข้อมูลจำลอง: `/?demo`, หน้า dev: `/dev.html`) ปิดโปรแกรมอื่นที่ใช้พอร์ต USB เดียวกัน (เช่น Serial Monitor ของ Arduino IDE) ก่อนกดเชื่อมต่อ
+
+ก่อนแก้โค้ดให้อ่าน [AGENTS.md](AGENTS.md) (กฎการทำงาน) และ [HANDOFF.md](HANDOFF.md) (สถานะล่าสุด) ทุกครั้งที่จบงานต้องอัปเดต HANDOFF และเพิ่มบันทึกใน [docs/WORKLOG.md](docs/WORKLOG.md)
 
 ---
 
@@ -44,17 +65,12 @@
 - **ระบบตรวจสอบสายไฟและสลับขาอัตโนมัติ (Electrical PinCheck & Auto-Swap):**
   - เช็คสถานะทางไฟฟ้าของขา `D21` และ `D22` ตอนบูต (`OK_PULLUP_3V3`, `FLOATING`, หรือ `LOW_STUCK`) พร้อมฟังก์ชัน `unstickI2CPins()` ส่งคล็อก 16 ลูกเพื่อปลดล็อกกรณีสาย SDA ค้าง
   - หากไม่พบอุปกรณ์บน `(SDA=21, SCL=22)` บอร์ดจะทดลองสลับเป็น `(SDA=22, SCL=21)` อัตโนมัติเผื่อเสียบสายสลับกัน
-- **การคำนวณมุมศีรษะจากเซนเซอร์คู่ (Dual-Ear Circular Midpoint) และ Protocol v1:**
+- **การคำนวณมุมศีรษะจากเซนเซอร์คู่ (Dual-Ear Circular Midpoint) และ Protocol v2:**
   - ตั้งศูนย์ (Zero Calibration) แยกอิสระรายตัว (`offsetPitchL/R`, `offsetRollL/R`, `offsetYawL/R`, `offsetC7`)
-  - เมื่อทั้ง `0x4A` และ `0x4B` ทำงานพร้อมกัน จะคำนวณค่าเฉลี่ยเชิงมุม (`circularMidpointDeg`) ของหูซ้ายและหูขวาเพื่อให้ได้มุมกลางกะโหลกที่แม่นยำ และคำนวณมุม 3D CVA ส่งออกเป็น JSON **Protocol v1** ความถี่ 5 Hz (ทุก 200 ms)
+  - เมื่อทั้ง `0x4A` และ `0x4B` ทำงานพร้อมกัน จะคำนวณค่าเฉลี่ยเชิงมุม (`circularMidpointDeg`) ของหูซ้ายและหูขวาเพื่อให้ได้มุมกลางกะโหลกที่แม่นยำ และส่งออกเป็น JSON **Protocol v2** ความถี่ 5 Hz (ทุก 200 ms)
+  - field หลัก: `protocol_version: 2`, `geometry_id`, `tilt_estimated`, `mpu_tilt` (มุม MPU ที่ C7 เทียบตอนตั้งศูนย์ ไม่ผสม pitch, `null` ถ้าไม่มี MPU), `mpu_tilt_raw`, `head_pitch`, `head_roll`, `head_yaw`, `cva_angle`
+  - CVA ใช้แบบจำลอง 2 ท่อนในระนาบด้านข้าง (geometry 1) roll/yaw ไม่เข้าสูตร ดู [`docs/FORMULA.md`](docs/FORMULA.md)
   - มีระบบ Auto-Reconnect / Health Check ทุก 3 วินาที หากสายหลุดแล้วเสียบใหม่จะกลับมาอ่านค่าต่อได้เองโดยไม่ต้องรีบูตบอร์ด
 
-### 2. แก้ไขฝั่งหน้าเว็บ (`live_test.html`)
-- **รองรับ USB Serial Protocol v1 เต็มรูปแบบ:**
-  - ปลดสัญญาณ `DTR=false, RTS=false` ตอนเปิดพอร์ต USB Serial เพื่อไม่ให้บอร์ด ESP32 ค้างในโหมด Reset
-  - แสดงป้ายสถานะ (Sensor Badges) แยกชัดเจนทั้ง 3 ตัว: `🟢 L-A(0x4A): ONLINE`, `🟢 R-B(0x4B): ONLINE`, และ `🟢 C7(0x68): ONLINE / ESTIMATED`
-- **ปุ่มควบคุมและวินิจฉัยผ่านหน้าเว็บโดยตรง:**
-  - ปุ่ม **ตั้งศูนย์ท่าตรง (Zero Calibration)** ส่งคำสั่ง `z` ไปให้ ESP32 ตั้งศูนย์ใหม่พร้อมรอรับ `calibration_id` ยืนยันกลับภายใน 5 วินาที
-  - ปุ่ม **สแกนบัส I2C** ส่งคำสั่ง `s` ไปให้ ESP32 สแกนและแสดงรายการ Address ที่พบ (`0x4A, 0x4B, 0x68`) บนหน้าเว็บทันที
-  - ปุ่ม **ปล่อยพอร์ต USB (Disconnect)** เพื่อให้สามารถกด Upload โค้ดใน Arduino IDE ได้ทันทีโดยไม่ต้องปิดหน้าเว็บ
-  - หน้าต่าง **USB Step Log** แสดงขั้นตอนการบูต (`[ESP-LOG]`) และสถานะแพ็กเก็ตแบบเรียลไทม์
+### 2. หน้าเว็บ
+- หน้าเดิม (`live_test.html`, `wiring_guide.html` และ pitch deck ใน `index.html`) ถูกแทนด้วย `index.html` และ `dev.html` ชุดใหม่ ฟีเจอร์ USB เดิม (ปลด DTR/RTS, ตรวจ Protocol v1, Zero รอ `calibration_id`, สแกน I2C, log) ย้ายไปอยู่ใน `assets/c7-core.js` และหน้า dev

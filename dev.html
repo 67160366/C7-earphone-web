@@ -31,6 +31,29 @@
     </header>
 
     <main class="wrap dev-grid">
+        <section class="conn-top" aria-label="การเชื่อมต่อบอร์ดและเซ็นเซอร์">
+            <div class="panel block">
+                <h2>การเชื่อมต่อเซ็นเซอร์</h2>
+                <div class="sensors">
+                    <div class="sensor" id="sL"><b>หูซ้าย</b><span class="mono">BNO 0x4A</span><em>–</em></div>
+                    <div class="sensor" id="sR"><b>หูขวา</b><span class="mono">BNO 0x4B</span><em>–</em></div>
+                    <div class="sensor" id="sC"><b>ต้นคอ C7</b><span class="mono">MPU 0x68</span><em>–</em></div>
+                </div>
+                <p id="scanResult" class="small muted">ยังไม่ได้สแกน I2C</p>
+            </div>
+
+            <div class="panel block">
+                <h2>บอร์ด</h2>
+                <dl class="kv num">
+                    <div><dt>boot_id</dt><dd id="kBoot" class="mono">–</dd></div>
+                    <div><dt>calibration_id</dt><dd id="kCal" class="mono">–</dd></div>
+                    <div><dt>อัตราเฟรม</dt><dd id="kFps">–</dd></div>
+                    <div><dt>อายุเฟรมล่าสุด</dt><dd id="kAge">–</dd></div>
+                    <div><dt>valid / invalid</dt><dd id="kCount">–</dd></div>
+                    <div><dt>เหตุผลที่ข้อมูลใช้ไม่ได้</dt><dd id="kReason">–</dd></div>
+                </dl>
+            </div>
+        </section>
         <details class="panel block formula" id="formulaBox" open>
             <summary><h2>สูตรมุมคอ (CVA) ทีละขั้น</h2><span id="fSource" class="chip">ท่าตั้งศูนย์ (ยังไม่มีข้อมูล)</span></summary>
             <p class="small muted">ค่าประมาณจากแบบจำลอง 2 ท่อนในระนาบด้านข้าง (geometry <span id="fGeo" class="mono">1</span>) เทียบกับท่าตอนตั้งศูนย์ ซึ่งบังคับให้เป็น 52.05° ไม่ใช่การวินิจฉัยทางการแพทย์ อธิบายเต็มใน <code>docs/FORMULA.md</code></p>
@@ -66,6 +89,7 @@
                         <label><input type="radio" name="fView" value="angle"><span>3 มิติ</span></label>
                         <label><input type="radio" name="fView" value="front"><span>ด้านหน้า</span></label>
                     </div>
+                    <label class="check small" for="fMirror"><input type="checkbox" id="fMirror" checked> แสดงแบบกระจก (เหมือนหน้าผู้ใช้: เอียงหูขวาลง ภาพเอียงไปทางขวาของจอ)</label>
                     <figcaption class="small muted" id="fModelInfo">กำลังโหลดโมเดล</figcaption>
                 </figure>
             </div>
@@ -109,28 +133,6 @@
         </details>
 
         <section class="col">
-            <div class="panel block">
-                <h2>บอร์ด</h2>
-                <dl class="kv num">
-                    <div><dt>boot_id</dt><dd id="kBoot" class="mono">–</dd></div>
-                    <div><dt>calibration_id</dt><dd id="kCal" class="mono">–</dd></div>
-                    <div><dt>อัตราเฟรม</dt><dd id="kFps">–</dd></div>
-                    <div><dt>อายุเฟรมล่าสุด</dt><dd id="kAge">–</dd></div>
-                    <div><dt>valid / invalid</dt><dd id="kCount">–</dd></div>
-                    <div><dt>เหตุผลที่ข้อมูลใช้ไม่ได้</dt><dd id="kReason">–</dd></div>
-                </dl>
-            </div>
-
-            <div class="panel block">
-                <h2>เซ็นเซอร์</h2>
-                <div class="sensors">
-                    <div class="sensor" id="sL"><b>หูซ้าย</b><span class="mono">BNO 0x4A</span><em>–</em></div>
-                    <div class="sensor" id="sR"><b>หูขวา</b><span class="mono">BNO 0x4B</span><em>–</em></div>
-                    <div class="sensor" id="sC"><b>ต้นคอ C7</b><span class="mono">MPU 0x68</span><em>–</em></div>
-                </div>
-                <p id="scanResult" class="small muted">ยังไม่ได้สแกน I2C</p>
-            </div>
-
             <div class="panel block">
                 <h2>มุม</h2>
                 <table class="angles num">

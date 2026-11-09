@@ -125,3 +125,9 @@ td[data-tone="ok"] { color: var(--good); }
 @media (max-width: 900px) {
     .formula-visuals { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Sensor and board connection status sit above everything else. */
+.conn-top { grid-column: 1 / -1; display: grid; gap: 16px; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; min-width: 0; }
+@media (max-width: 900px) {
+    .conn-top { grid-template-columns: minmax(0, 1fr); }
+}

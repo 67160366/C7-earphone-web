@@ -32,6 +32,11 @@ const NECK = [
 ];
 const BLEND = 0.16;      // half width of the smooth skin hand-over between neighbouring bones (in neck lengths)
 const SLICE_TILT = 25;   // neck cross-sections tilt (front lower), degrees
+// Head/neck boundary in formula cm (z forward, y up, from C7), measured on the scan's midline profile:
+// the nape hollow below the occiput and the crease under the chin. Everything above follows the skull,
+// so the face, jaw and lips never stretch with the neck.
+const NAPE = { z: 3.4, y: 7.5 }, UNDER_CHIN = { z: 12.5, y: 1.0 };
+const HEAD_BLEND = [-0.6, 0.9]; // cm below / above that line over which the skin hands over to the skull
 
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -151,15 +156,15 @@ export async function createNeckModel(canvas, { modelUrl, normalUrl } = {}) {
     const boneList = [chest, bones.c7, bones.c5, bones.c3, headBone];
 
     // Skin weights. u = position along the neck (0 at C7, 1 at C0) on slices tilted SLICE_TILT;
-    // h = 1 above the jaw/occiput line, which follows the head.
+    // h = 1 above the nape -> under-chin line (in cm), which follows the head.
     const sliceN = new THREE.Vector2(Math.sin(rad(SLICE_TILT)), Math.cos(rad(SLICE_TILT))); // (z, y)
     const c0Level = (c0.z - c7W.x) * sliceN.x + (c0.y - c7W.y) * sliceN.y;
-    const jawA = cm(-5.0, zero.c0.y + 0.2), jawB = cm(10.5, zero.c0.y - 3.4); // occiput base -> under the chin
-    const jawDir = new THREE.Vector2(jawB.z - jawA.z, jawB.y - jawA.y).normalize();
+    const jawDir = new THREE.Vector2(UNDER_CHIN.z - NAPE.z, UNDER_CHIN.y - NAPE.y).normalize();
     function weightsFor(y, z) {
         const u = ((z - c7W.x) * sliceN.x + (y - c7W.y) * sliceN.y) / c0Level;
-        const above = (z - jawA.z) * -jawDir.y + (y - jawA.y) * jawDir.x; // signed distance to the jaw line
-        const h = smooth(-0.05, 0.07, above) * smooth(0.55, 0.9, u);
+        const zc = (z - c7W.x) / S, yc = (y - c7W.y) / S; // formula cm
+        const above = (zc - NAPE.z) * -jawDir.y + (yc - NAPE.y) * jawDir.x; // signed cm above the jaw line
+        const h = smooth(HEAD_BLEND[0], HEAD_BLEND[1], above);
         // partition of unity over chest | c7 | c5 | c3 along u
         const t = [0, 1 / 3, 2 / 3].map((k) => smooth(k - BLEND, k + BLEND, u));
         const w = [1 - t[0], t[0] * (1 - t[1]), t[1] * (1 - t[2]), t[2]].map((v) => v * (1 - h));

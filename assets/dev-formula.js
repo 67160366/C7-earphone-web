@@ -115,7 +115,7 @@
             }))
             .then((m) => {
                 model = m;
-                model.setMirror(false); model.setView('side'); model.setLive(true); model.setSensors({ left_fresh: true, right_fresh: true });
+                model.setMirror($('fMirror').checked); model.setView('side'); model.setLive(true); model.setSensors({ left_fresh: true, right_fresh: true });
                 model.setPose(pendingPose);
                 window.C7Model = model; // inspection from the console
                 const i = model.info();
@@ -124,6 +124,8 @@
             .catch((e) => { console.error(e); $('fModelInfo').textContent = 'แสดงโมเดล 3 มิติไม่ได้ในเบราว์เซอร์นี้'; });
     }
     document.querySelectorAll('input[name="fView"]').forEach((r) => r.addEventListener('change', () => { if (model) model.setView(r.value); }));
+    // Same default as the user page: mirrored, so the wearer's right appears on the right of the screen.
+    $('fMirror').addEventListener('change', (e) => { if (model) model.setMirror(e.target.checked); });
 
     /* ---------- render ---------- */
     function render(s, { simulated = false } = {}) {

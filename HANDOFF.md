@@ -10,7 +10,7 @@
 
 ## Git
 - Clone จาก `https://github.com/67160162-BUU/C7-earphone.git` (upstream `main` = `cf27bb4`)
-- งานหน้าเว็บใหม่อยู่บน branch **`feature/user-web`** ยังไม่ commit (ดู `git status`)
+- งานหน้าเว็บใหม่อยู่บน branch **`feature/user-web`** commit แล้วที่ `88d3b35` (ยังไม่ push และยังไม่ merge)
 - โปรเจกต์เดิม `D:\work\HeadSet` (branch `codex/hardware-demo-handoff`) เป็นงานคนละชุด แต่ arduino-cli และ ESP32 core 3.3.12 ที่ใช้ compile อยู่ใน `D:\work\HeadSet\.local`
 
 ## วิธีรัน

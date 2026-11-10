@@ -5,3 +5,7 @@
 Thumbs.db
 __pycache__/
 *.pyc
+# ข้อมูลที่เก็บจากผู้เข้าร่วม (collect.html) ห้ามเข้า git
+data/
+SIM_*.csv
+SIM_*.json

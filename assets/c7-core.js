@@ -23,6 +23,8 @@
     const LIMITS = { tilt: [-30, 40], pitch: [-25, 45], roll: [-30, 30], yaw: [-40, 40], c7: [-15, 35] };
     const NEUTRAL_CVA = 52.05;
     const PROTOCOL_VERSION = 2;
+    // USB baud of esp32_c7_prototype.ino (SERIAL_BAUD). 460800 leaves room for the 50 Hz collect stream.
+    const BAUD = 460800;
 
     /* ---------- CVA model, geometry 1 ---------- */
     // kind: 'measured' = read from a sensor, 'assumed' = chosen value to be calibrated, 'derived' = calculated.
@@ -198,6 +200,9 @@
         if (t === 'I2C FULL_SCAN_BEGIN') return { type: 'i2c', kind: 'begin', raw: text };
         if (t === 'I2C FULL_SCAN_END') return { type: 'i2c', kind: 'end', raw: text };
         if (t.startsWith('I2C BUS_SUMMARY:')) return { type: 'i2c', kind: 'summary', text: t.slice(16).trim(), raw: text };
+        // Collect mode (docs/DATA_COLLECTION.md): H = header with key=value pairs, D = one raw sample line.
+        if (t.startsWith('H,')) return { type: 'collect-header', text: t, raw: text };
+        if (/^D,\d/.test(t)) return { type: 'collect', text: t, raw: text };
         const ack = /^I2C (0x[0-9A-Fa-f]{2}): (ACK|NO_ACK)\b/.exec(t);
         if (ack) return { type: 'i2c', kind: 'ack', addr: ack[1].toUpperCase().replace('0X', '0x'), ack: ack[2] === 'ACK', raw: text };
         const a = t.indexOf('{'), b = t.lastIndexOf('}');
@@ -226,10 +231,10 @@
             this.message = '';
             this.port = null; this.reader = null; this.sim = null;
             this.gen = 0; this.timer = null;
-            this.lastValidAt = 0; this.lastPacketAt = 0;
+            this.lastValidAt = 0; this.lastPacketAt = 0; this.lastCollectAt = 0;
             this.bootId = null; this.calibrationId = null;
             this.lastPacket = null; this.lastSample = null; this.lastInvalid = null;
-            this.stats = { packets: 0, valid: 0, invalid: 0, lines: 0 };
+            this.stats = { packets: 0, valid: 0, invalid: 0, lines: 0, collect: 0 };
             this.pendingZero = null; this.scan = null;
             this._onSerialDisconnect = (e) => {
                 if (this.port && (e.target === this.port || e.port === this.port)) {
@@ -271,7 +276,7 @@
             const gen = ++this.gen;
             this._set('connecting', 'กำลังเชื่อมต่อหูฟัง');
             try {
-                await port.open({ baudRate: 115200 });
+                await port.open({ baudRate: BAUD });
             } catch (e) {
                 if (gen === this.gen) {
                     this._set('error', 'เปิดพอร์ตไม่ได้ ปิดโปรแกรมอื่นที่ใช้พอร์ตนี้อยู่ (เช่น Serial Monitor) แล้วลองใหม่');
@@ -345,10 +350,13 @@
         }
 
         _resetSession() {
-            this.lastValidAt = 0; this.lastPacketAt = 0; this.bootId = null; this.calibrationId = null;
+            this.lastValidAt = 0; this.lastPacketAt = 0; this.lastCollectAt = 0; this.bootId = null; this.calibrationId = null;
             this.lastPacket = null; this.lastSample = null; this.lastInvalid = null; this._waitSince = 0;
-            this.stats = { packets: 0, valid: 0, invalid: 0, lines: 0 };
+            this.stats = { packets: 0, valid: 0, invalid: 0, lines: 0, collect: 0 };
         }
+
+        /** Latest time the board proved it is measuring: a valid v2 packet or a collect-mode D line. */
+        get liveAt() { return Math.max(this.lastValidAt, this.lastCollectAt); }
 
         _startTimer() {
             if (this.timer) clearInterval(this.timer);
@@ -360,8 +368,8 @@
             const now = this.now();
             if (this.pendingZero && now - this.pendingZero.started > ZERO_TIMEOUT_MS) this._finishZero(false, 'TIMEOUT');
             if (!this.connected) return;
-            const lastSeen = Math.max(this.lastValidAt, this.lastPacketAt);
-            if ((this.state === 'live' && now - this.lastValidAt > STALE_MS) || (this.state === 'waiting' && lastSeen && now - lastSeen > STALE_MS)) {
+            const lastSeen = Math.max(this.liveAt, this.lastPacketAt);
+            if ((this.state === 'live' && now - this.liveAt > STALE_MS) || (this.state === 'waiting' && lastSeen && now - lastSeen > STALE_MS)) {
                 this._set('stale', 'สัญญาณจากหูฟังขาดหาย ตรวจสาย USB');
             } else if (this.state === 'waiting' && !this.lastPacketAt && now - (this._waitSince || (this._waitSince = now)) > 4000) {
                 this._set('waiting', 'ยังไม่ได้รับข้อมูล ลองกดปุ่ม EN บนบอร์ด หรือถอดเสียบสายใหม่');
@@ -376,6 +384,16 @@
             this.emit('line', msg);
             if (msg.type === 'json') this._packet(msg.data);
             else if (msg.type === 'i2c') this._i2c(msg);
+            else if (msg.type === 'collect') this._collect(msg);
+            else if (msg.type === 'collect-header') this.emit('collectHeader', msg);
+        }
+
+        /** Collect-mode line: keeps the session live; decoding is done by assets/c7-collect.js. */
+        _collect(msg) {
+            this.stats.collect++;
+            this.lastCollectAt = this.now();
+            if (this.state !== 'live') this._set('live', this.sim ? 'ข้อมูลจำลอง' : 'กำลังส่งค่าดิบ');
+            this.emit('collect', msg);
         }
 
         _packet(p) {
@@ -398,7 +416,7 @@
                 this.stats.invalid++;
                 this.lastInvalid = r;
                 // A short flicker of invalid packets keeps the live state; only a sustained gap leaves it.
-                if (!this.lastValidAt || now - this.lastValidAt > STALE_MS) this._set('waiting', r.user);
+                if (!this.liveAt || now - this.liveAt > STALE_MS) this._set('waiting', r.user);
                 this.emit('invalid', r);
             }
         }
@@ -564,6 +582,6 @@
 
     root.C7 = {
         cva, cvaParts, cvaLegacy, solvePhi0, classify, validatePacket, parseLine, Device, Simulator, Emitter,
-        GEOMETRY, PHI0, SENSITIVITY, LIMITS, NEUTRAL_CVA, PROTOCOL_VERSION, STALE_MS, ZERO_TIMEOUT_MS,
+        GEOMETRY, PHI0, SENSITIVITY, LIMITS, NEUTRAL_CVA, PROTOCOL_VERSION, STALE_MS, ZERO_TIMEOUT_MS, BAUD,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -32,6 +32,8 @@
 - สูตร CVA (geometry 1, อธิบายใน [docs/FORMULA.md](docs/FORMULA.md)) มีอยู่ 3 ที่: `assets/c7-core.js` (`GEOMETRY`, `cvaParts`), `esp32_c7_prototype.ino` (`calculateCVA`) และ `api/save_angle.php` (`cva_geometry1`)
   - ถ้าแก้ค่าคงที่หรือเครื่องหมาย ต้องแก้ทุกที่ให้ตรงกัน อัปเดต `refCva()` ใน `scripts/check-web.mjs` และเพิ่ม `GEOMETRY.id` / `CVA_GEOMETRY_ID`
 - ข้อมูลจำลองต้องมีป้าย "ข้อมูลจำลอง" ให้เห็นตลอด ห้ามบันทึกลง API และห้ามแสดงเหมือนเป็นข้อมูลจริง
+- baud ของ USB อยู่ 2 ที่: `SERIAL_BAUD` ในเฟิร์มแวร์ และ `BAUD` ใน `assets/c7-core.js` ต้องตรงกัน
+- ลำดับคอลัมน์ของบรรทัด `D` อยู่ 2 ที่: `sendCollectLine()` ในเฟิร์มแวร์ และ `parseData()` ใน `assets/c7-collect.js` ถ้าเปลี่ยนให้เพิ่ม `COLLECT_FORMAT` / `FORMAT` ทั้งคู่
 - หน้าเว็บต้องทำงานได้แบบออฟไลน์ ไม่ใช้ CDN, framework หรือ build step
   - Three.js และฟอนต์เก็บไว้ในเครื่องที่ `assets/vendor` และ `assets/fonts`
   - ห้ามเพิ่ม `package.json` หรือ dependency โดยไม่ได้ตกลงกันก่อน
@@ -45,7 +47,7 @@
   - ต้องตรวจกับฮาร์ดแวร์ก่อนจะเรียกว่าเสร็จ เทสต์บนหน้าเว็บใช้แทนไม่ได้
   - ห้าม flash บอร์ดถ้าผู้ใช้ไม่ได้สั่ง
 - พอร์ต USB เปิดได้ทีละโปรแกรม ถ้ามี Serial Monitor หรือ monitor ตัวอื่นเปิดอยู่ ต้องปิดก่อนเชื่อมต่อจากหน้าเว็บ
-- ห้าม commit `.env`, `.local/`, log, ข้อมูลเซ็นเซอร์ส่วนตัว หรือ backup flash
+- ห้าม commit `.env`, `.local/`, log, ข้อมูลเซ็นเซอร์ส่วนตัว (เก็บไว้ใน `data/` ซึ่ง ignore แล้ว) หรือ backup flash
 
 ## Git
 - งานหน้าเว็บอยู่บน branch `feature/user-web` ส่วน `main` ตาม upstream `67160162-BUU/C7-earphone`
@@ -59,7 +61,7 @@
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1          # เปิดหน้าเว็บที่ http://127.0.0.1:8090/
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1 -Stop    # ปิด server
-node scripts/check-web.mjs                                                       # เทสต์ c7-core.js (ตอนนี้ 21 ข้อ)
+node scripts/check-web.mjs                                                       # เทสต์ c7-core.js + c7-collect.js (ตอนนี้ 31 ข้อ)
 git diff --check
 ```
 ต้องมี PHP 8 ขึ้นไปสำหรับ server, Node 18 ขึ้นไปสำหรับเทสต์ และ Chrome หรือ Edge สำหรับ Web Serial
@@ -80,9 +82,11 @@ git diff --check
 | `index.html`, `assets/user.js`, `assets/user.css` | หน้าผู้ใช้ |
 | `assets/neck-model.js` | โมเดลศีรษะและคอ 3 มิติ (ES module, ต้องเปิดผ่าน http) |
 | `dev.html`, `assets/dev.js`, `assets/dev.css` | หน้านักพัฒนา, ตรวจทิศทางเซ็นเซอร์ |
+| `collect.html`, `assets/collect.js`, `assets/collect.css` | หน้าเก็บข้อมูลดิบ 50 Hz, ขั้นตอนท่า, โมเดล 3 มิติตรวจทิศ, ดาวน์โหลด CSV/JSON |
+| `assets/c7-collect.js` | อ่านบรรทัด `H`/`D` ของโหมดเก็บข้อมูล, quaternion, CSV, ข้อมูลจำลอง (ดู `docs/DATA_COLLECTION.md`) |
 | `assets/c7-core.js` | สูตร CVA, ตรวจ Protocol v2 (รับ v1), เชื่อม USB, ข้อมูลจำลอง |
 | `assets/dev-formula.js` | แผงสูตร CVA ทีละขั้นในหน้า dev (SVG + โมเดล 3 มิติ) |
 | `assets/app.css` | design tokens ที่ใช้ร่วมกัน |
-| `esp32_c7_prototype/esp32_c7_prototype.ino` | เฟิร์มแวร์ ESP32 (SafeBNO085, JSON v1 ที่ 115200 baud 5 Hz) |
+| `esp32_c7_prototype/esp32_c7_prototype.ino` | เฟิร์มแวร์ ESP32 (SafeBNO085, JSON v2 ที่ 460800 baud 5 Hz, โหมดเก็บข้อมูล `r`/`n` 50 Hz) |
 | `api/*.php` | บันทึกและอ่านค่า (MySQL หรือ CSV) ใช้จากหน้า dev เท่านั้น |
 | `scripts/check-web.mjs` | เทสต์โดยไม่ต้องมี dependency |

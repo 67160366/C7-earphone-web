@@ -16,7 +16,12 @@
 //     * ซ้าย (LeftEar_A)  = Sensor A (0x4A) -> เริ่มทำงานตัวแรก
 //     * ขวา  (RightEar_B) = Sensor B (0x4B) -> เริ่มทำงานตัวที่สอง
 //     * ต้นคอ (C7)        = MPU6050  (0x68)
+// - USB 460800 baud. โหมดปกติส่ง JSON v2 ทุก 200 ms
+// - โหมดเก็บข้อมูล (คำสั่ง r เปิด / n ปิด) ส่งค่าดิบทั้ง 3 ตัวเป็นบรรทัด D,... ทุก 20 ms (50 Hz)
+//   และ JSON v2 ทุก 1 วินาที รูปแบบอธิบายใน docs/DATA_COLLECTION.md
 // ============================================================================
+
+#define SERIAL_BAUD       460800
 
 #define I2C0_SDA_PIN      21
 #define I2C0_SCL_PIN      22
@@ -40,6 +45,8 @@
 #define SHTP_REPORT_BASE_TIMESTAMP      0xFB
 #define SHTP_REPORT_TIMESTAMP_REBASE    0xFA
 
+#define REPORTID_ACCELEROMETER                    0x01
+#define REPORTID_GYROSCOPE_CALIBRATED             0x02
 #define REPORTID_ROTATION_VECTOR                  0x05
 #define REPORTID_GAME_ROTATION_VECTOR             0x08
 #define REPORTID_ARVR_STABILIZED_ROTATION_VECTOR  0x28
@@ -64,6 +71,16 @@ public:
   float     quatJ = 0.0f;
   float     quatK = 0.0f;
   float     quatReal = 1.0f;
+
+  // ค่าดิบล่าสุดของแต่ละ report (int16 ตามสเปก SH-2) ใช้ในโหมดเก็บข้อมูล
+  int16_t   rawQ[4]    = {16384, 0, 0, 0}; // w, x, y, z  (Q14)
+  int16_t   rawAcc[3]  = {0, 0, 0};        // report 0x01 m/s^2 (Q8)
+  int16_t   rawGyro[3] = {0, 0, 0};        // report 0x02 rad/s (Q9)
+  uint8_t   rvAccuracy = 0;                // status bit 0-1 ของ rotation vector (0 = ไม่น่าเชื่อถือ, 3 = ดีมาก)
+  uint32_t  quatUpdates = 0;
+  uint32_t  accUpdates  = 0;
+  uint32_t  gyroUpdates = 0;
+  bool      lastPacketOk = false;          // getReadings() ครั้งล่าสุดได้แพ็กเก็ตหรือไม่
 
   uint32_t  rxPackets = 0;
   uint32_t  readFailures = 0;
@@ -259,44 +276,88 @@ public:
     return false;
   }
 
+  static int16_t le16(const uint8_t *p) {
+    return (int16_t)(((uint16_t)p[1] << 8) | p[0]);
+  }
+
+  // ความยาว (ไบต์) ของ input report แต่ละชนิดตามสเปก SH-2, 0 = ไม่รู้จัก (หยุดอ่านแพ็กเก็ตนั้น)
+  static uint8_t reportLength(uint8_t id) {
+    switch (id) {
+      case REPORTID_ACCELEROMETER:
+      case REPORTID_GYROSCOPE_CALIBRATED:
+      case 0x03: case 0x04: case 0x06:            // magnetic field, linear accel, gravity
+        return 10;
+      case 0x07: case 0x0F:                       // uncalibrated gyro / magnetic field
+        return 16;
+      case REPORTID_ROTATION_VECTOR:
+      case REPORTID_ARVR_STABILIZED_ROTATION_VECTOR:
+      case 0x09:                                  // geomagnetic rotation vector
+        return 14;
+      case REPORTID_GAME_ROTATION_VECTOR:
+      case REPORTID_ARVR_STABILIZED_GAME_ROT_VECTOR:
+        return 12;
+      case SHTP_REPORT_BASE_TIMESTAMP:
+      case SHTP_REPORT_TIMESTAMP_REBASE:
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  static bool isRotationReport(uint8_t id) {
+    return id == REPORTID_ARVR_STABILIZED_ROTATION_VECTOR || id == REPORTID_ARVR_STABILIZED_GAME_ROT_VECTOR ||
+           id == REPORTID_ROTATION_VECTOR || id == REPORTID_GAME_ROTATION_VECTOR;
+  }
+
+  // อ่าน 1 แพ็กเก็ตแล้วแยกทุก report ข้างใน (BNO085 รวมหลาย report ไว้ในแพ็กเก็ตเดียวได้)
+  // คืน id ของ rotation vector ถ้าแพ็กเก็ตมี ไม่อย่างนั้นคืน id ของ report แรก หรือ 0
   uint16_t getReadings() {
+    lastPacketOk = false;
     if (mockReport != 0) {
       quatI = 0.0f; quatJ = 0.0f; quatK = 0.0f; quatReal = 1.0f;
       return mockReport;
     }
 
     if (!receivePacket()) return 0;
+    lastPacketOk = true;
 
-    if ((shtpHeader[2] == SHTP_CHANNEL_REPORTS || shtpHeader[2] == SHTP_CHANNEL_WAKE_REPORTS) && payloadLen >= 12) {
-      uint16_t off = 0;
-      if (shtpData[0] == SHTP_REPORT_BASE_TIMESTAMP || shtpData[0] == SHTP_REPORT_TIMESTAMP_REBASE) {
-        off = 5;
-        if (off < payloadLen && shtpData[off] == SHTP_REPORT_TIMESTAMP_REBASE) {
-          off += 5;
-        }
-      }
-      if (off >= payloadLen) return 0;
+    const uint8_t ch = shtpHeader[2];
+    if (ch != SHTP_CHANNEL_REPORTS && ch != SHTP_CHANNEL_WAKE_REPORTS) return 0;
 
-      const uint8_t repId = shtpData[off];
-      if ((repId == REPORTID_ARVR_STABILIZED_ROTATION_VECTOR ||
-           repId == REPORTID_ARVR_STABILIZED_GAME_ROT_VECTOR ||
-           repId == REPORTID_ROTATION_VECTOR ||
-           repId == REPORTID_GAME_ROTATION_VECTOR) &&
-          (off + 11 < payloadLen)) {
-        const int16_t rawI = (int16_t)(((uint16_t)shtpData[off + 5]  << 8) | shtpData[off + 4]);
-        const int16_t rawJ = (int16_t)(((uint16_t)shtpData[off + 7]  << 8) | shtpData[off + 6]);
-        const int16_t rawK = (int16_t)(((uint16_t)shtpData[off + 9]  << 8) | shtpData[off + 8]);
-        const int16_t rawR = (int16_t)(((uint16_t)shtpData[off + 11] << 8) | shtpData[off + 10]);
+    uint16_t quatRep  = 0;
+    uint16_t firstRep = 0;
+    uint16_t off = 0;
+    while (off < payloadLen) {
+      const uint8_t id  = shtpData[off];
+      const uint8_t len = reportLength(id);
+      if (len == 0 || (uint16_t)(off + len) > payloadLen) break;
+      const uint8_t *r = &shtpData[off];
+      off += len;
+      if (id == SHTP_REPORT_BASE_TIMESTAMP || id == SHTP_REPORT_TIMESTAMP_REBASE) continue;
+      if (firstRep == 0) firstRep = id;
 
+      if (isRotationReport(id)) {
+        rawQ[1] = le16(r + 4);
+        rawQ[2] = le16(r + 6);
+        rawQ[3] = le16(r + 8);
+        rawQ[0] = le16(r + 10);
         const float scale = 1.0f / 16384.0f; // Q14 fixed-point
-        quatI    = (float)rawI * scale;
-        quatJ    = (float)rawJ * scale;
-        quatK    = (float)rawK * scale;
-        quatReal = (float)rawR * scale;
+        quatI    = (float)rawQ[1] * scale;
+        quatJ    = (float)rawQ[2] * scale;
+        quatK    = (float)rawQ[3] * scale;
+        quatReal = (float)rawQ[0] * scale;
+        rvAccuracy = r[2] & 0x03;
+        quatUpdates++;
+        quatRep = id;
+      } else if (id == REPORTID_ACCELEROMETER) {
+        rawAcc[0] = le16(r + 4); rawAcc[1] = le16(r + 6); rawAcc[2] = le16(r + 8);
+        accUpdates++;
+      } else if (id == REPORTID_GYROSCOPE_CALIBRATED) {
+        rawGyro[0] = le16(r + 4); rawGyro[1] = le16(r + 6); rawGyro[2] = le16(r + 8);
+        gyroUpdates++;
       }
-      return repId;
     }
-    return 0;
+    return quatRep != 0 ? quatRep : firstRep;
   }
 };
 
@@ -368,6 +429,30 @@ float headPitch = 0.0f, headRoll = 0.0f, headYaw = 0.0f;
 float mpuTilt   = 0.0f;   // มุม MPU ที่ C7 เปลี่ยนจากตอนตั้งศูนย์ (ไม่ปน head pitch)
 bool  mpuTiltOk = false;
 float cvaAngle  = 52.05f;
+
+// ---------- โหมดเก็บข้อมูล (collect mode, docs/DATA_COLLECTION.md) ----------
+const int           COLLECT_FORMAT       = 1;      // เปลี่ยนเมื่อเปลี่ยนลำดับคอลัมน์ของบรรทัด D
+const unsigned long COLLECT_INTERVAL_MS  = 20;     // ส่งบรรทัด D ทุก 20 ms (50 Hz)
+const uint16_t      COLLECT_REPORT_MS    = 20;     // ขอ report จาก BNO085 ทุก 20 ms
+const unsigned long COLLECT_JSON_MS      = 1000;   // JSON v2 ระหว่างเก็บข้อมูล (ให้ zero และ calibration_id ยังทำงาน)
+const unsigned long COLLECT_HEADER_MS    = 5000;   // ส่ง H ซ้ำ เผื่อหน้าเว็บต่อเข้ามากลางทาง
+const unsigned long RATE_LOG_MS          = 1000;
+const uint32_t      NORMAL_I2C_HZ        = 100000;
+const uint32_t      COLLECT_I2C_HZ       = 400000; // 50 Hz x 3 report x 2 หู ไม่พอที่ 100 kHz (ต้องตรวจกับบอร์ดจริง)
+
+bool          collectMode         = false;
+uint16_t      collectSeq          = 0;
+unsigned long lastCollectMs       = 0;
+unsigned long lastCollectHeaderMs = 0;
+unsigned long lastRateLogMs       = 0;
+uint32_t      collectLines        = 0;
+
+int16_t  mpuRaw[6] = {0, 0, 0, 0, 0, 0}; // ax ay az gx gy gz (16384 LSB/g, 131 LSB/(deg/s))
+uint32_t mpuReads  = 0;
+
+// ตัวนับตอนส่งบรรทัด D ล่าสุด (ไว้ตั้ง bit "มีค่าใหม่") และตอน log อัตราล่าสุด
+uint32_t lineSnapQL = 0, lineSnapQR = 0, lineSnapC7 = 0;
+uint32_t rateSnap[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 void logStep(const String &msg) {
   Serial.println("[ESP-LOG] " + msg);
@@ -503,6 +588,13 @@ float calculateCVA(bool hasTilt, float tiltDeg, float headPitchDeg) {
   return atan2f(ty, tz) * (180.0f / PI);
 }
 
+bool mpuWrite(uint8_t reg, uint8_t val) {
+  c7Bus->beginTransmission(MPU6050_C7_ADDR);
+  c7Bus->write(reg);
+  c7Bus->write(val);
+  return (c7Bus->endTransmission(true) == 0);
+}
+
 bool initMpu6050AtC7() {
   if (isDeviceOnBus(Wire, MPU6050_C7_ADDR)) {
     c7Bus = &Wire;
@@ -512,10 +604,11 @@ bool initMpu6050AtC7() {
     return false;
   }
 
-  c7Bus->beginTransmission(MPU6050_C7_ADDR);
-  c7Bus->write(0x6B);
-  c7Bus->write(0x00);
-  return (c7Bus->endTransmission(true) == 0);
+  if (!mpuWrite(0x6B, 0x00)) return false; // ปลุกจาก sleep
+  mpuWrite(0x1A, 0x03);                     // DLPF ~44 Hz
+  mpuWrite(0x1B, 0x00);                     // gyro ±250 deg/s (131 LSB/(deg/s))
+  mpuWrite(0x1C, 0x00);                     // accel ±2 g (16384 LSB/g)
+  return true;
 }
 
 int16_t readInt16BE(TwoWire &bus) {
@@ -529,15 +622,57 @@ bool readC7PitchFromMpu6050(float &angleOut) {
   c7Bus->write(0x3B);
   if (c7Bus->endTransmission(false) != 0) return false;
 
-  if (c7Bus->requestFrom((uint8_t)MPU6050_C7_ADDR, (uint8_t)6, (uint8_t)true) < 6) return false;
+  // 14 ไบต์: accel xyz, อุณหภูมิ, gyro xyz (big-endian)
+  if (c7Bus->requestFrom((uint8_t)MPU6050_C7_ADDR, (uint8_t)14, (uint8_t)true) < 14) {
+    while (c7Bus->available()) c7Bus->read();
+    return false;
+  }
 
   const int16_t ax = readInt16BE(*c7Bus);
   const int16_t ay = readInt16BE(*c7Bus);
   const int16_t az = readInt16BE(*c7Bus);
+  readInt16BE(*c7Bus); // อุณหภูมิ (ไม่ใช้)
+  const int16_t gx = readInt16BE(*c7Bus);
+  const int16_t gy = readInt16BE(*c7Bus);
+  const int16_t gz = readInt16BE(*c7Bus);
 
   if (ax == 0 && ay == 0 && az == 0) return false;
+  mpuRaw[0] = ax; mpuRaw[1] = ay; mpuRaw[2] = az;
+  mpuRaw[3] = gx; mpuRaw[4] = gy; mpuRaw[5] = gz;
+  mpuReads++;
   angleOut = atan2f((float)ax, (float)az) * (180.0f / PI);
   return isfinite(angleOut);
+}
+
+// เปิด report ตามโหมด: ปกติ = 0x28 + 0x05 ทุก 50 ms, เก็บข้อมูล = 0x28 + 0x01 + 0x02 ทุก 20 ms
+void enableEarReports(SafeBNO085 &bno) {
+  if (collectMode) {
+    bno.setFeatureCommand(REPORTID_ARVR_STABILIZED_ROTATION_VECTOR, COLLECT_REPORT_MS);
+    delay(3);
+    bno.setFeatureCommand(REPORTID_ACCELEROMETER, COLLECT_REPORT_MS);
+    delay(3);
+    bno.setFeatureCommand(REPORTID_GYROSCOPE_CALIBRATED, COLLECT_REPORT_MS);
+  } else {
+    bno.enableARVRStabilizedRotationVector(50);
+    bno.enableRotationVector(50);
+  }
+}
+
+// สลับโหมดของ BNO หนึ่งตัว: ปิด report ของอีกโหมด (interval 0 = ปิด) แล้วเปิดของโหมดนี้
+void switchEarReports(SafeBNO085 &bno, bool collect) {
+  if (collect) {
+    // ใช้ rotation vector ชนิดเดียว (0x28) ไม่ปน 0x05/0x08 ตาม docs/SENSOR_AXES.md ข้อ 4
+    bno.setFeatureCommand(REPORTID_ROTATION_VECTOR, 0);
+    delay(3);
+    bno.setFeatureCommand(REPORTID_GAME_ROTATION_VECTOR, 0);
+    delay(3);
+  } else {
+    bno.setFeatureCommand(REPORTID_ACCELEROMETER, 0);
+    delay(3);
+    bno.setFeatureCommand(REPORTID_GYROSCOPE_CALIBRATED, 0);
+    delay(3);
+  }
+  enableEarReports(bno);
 }
 
 bool pollEarBySide(bool isLeft) {
@@ -548,8 +683,7 @@ bool pollEarBySide(bool isLeft) {
   uint16_t &lastRep = isLeft ? lastRepLeft : lastRepRight;
 
   if (bno.hasReset()) {
-    bno.enableARVRStabilizedRotationVector(50);
-    bno.enableRotationVector(50);
+    enableEarReports(bno);
   }
 
   const uint16_t rep = bno.getReadings();
@@ -795,6 +929,117 @@ void calibrateNeutralPosture() {
   logStep("Calibrated zero posture! calibration_id=#" + String(calibrationId));
 }
 
+// ---------- โหมดเก็บข้อมูล ----------
+// H = header (key=value) บอกรูปแบบและ scale ส่งตอนเข้าโหมดและทุก 5 วินาที
+void printCollectHeader() {
+  String h;
+  h.reserve(220);
+  h = "H,format=" + String(COLLECT_FORMAT);
+  h += ",boot_id=" + String(bootId);
+  h += ",calibration_id=" + String(calibrationId);
+  h += ",rate_hz=" + String(1000UL / COLLECT_INTERVAL_MS);
+  h += ",i2c_hz=" + String(COLLECT_I2C_HZ);
+  h += ",bno_q=14,bno_acc_q=8,bno_gyro_q=9,mpu_acc_lsb_g=16384,mpu_gyro_lsb_dps=131";
+  h += ",left=" + String(hasLeftEar ? 1 : 0);
+  h += ",right=" + String(hasRightEar ? 1 : 0);
+  h += ",c7=" + String(hasC7Mpu ? 1 : 0);
+  Serial.println(h);
+}
+
+void setCollectMode(bool on) {
+  if (on == collectMode) {
+    if (on) printCollectHeader();
+    return;
+  }
+  collectMode = on;
+  Wire.setClock(on ? COLLECT_I2C_HZ : NORMAL_I2C_HZ);
+  if (hasLeftEar)  switchEarReports(bnoLeft,  on);
+  if (hasRightEar) switchEarReports(bnoRight, on);
+  collectSeq = 0;
+  collectLines = 0;
+  lineSnapQL = bnoLeft.quatUpdates;
+  lineSnapQR = bnoRight.quatUpdates;
+  lineSnapC7 = mpuReads;
+  lastCollectMs = millis();
+  lastRateLogMs = lastCollectMs;
+  lastCollectHeaderMs = lastCollectMs;
+  logStep(on ? "COLLECT mode ON -> D lines 50 Hz, I2C " + String(COLLECT_I2C_HZ) + " Hz"
+             : String("COLLECT mode OFF -> protocol v2 JSON 5 Hz, I2C ") + String(NORMAL_I2C_HZ) + " Hz");
+  if (on) printCollectHeader();
+}
+
+void appendInts(String &s, const int16_t *v, int n) {
+  for (int i = 0; i < n; i++) {
+    s += ',';
+    s += String(v[i]);
+  }
+}
+
+void appendEmpty(String &s, int n) {
+  for (int i = 0; i < n; i++) s += ',';
+}
+
+// D,seq,t_ms,flags, L(qw qx qy qz ax ay az gx gy gz acc), R(...), C7(ax ay az gx gy gz)
+// flags: bit0-2 = L/R/C7 fresh, bit3-5 = L/R/C7 มีค่าใหม่ตั้งแต่บรรทัดก่อน ตัวที่ไม่ fresh ส่งช่องว่าง
+void sendCollectLine(unsigned long nowMs, bool leftFresh, bool rightFresh, bool c7Fresh) {
+  uint8_t flags = 0;
+  if (leftFresh)  flags |= 0x01;
+  if (rightFresh) flags |= 0x02;
+  if (c7Fresh)    flags |= 0x04;
+  if (bnoLeft.quatUpdates  != lineSnapQL) flags |= 0x08;
+  if (bnoRight.quatUpdates != lineSnapQR) flags |= 0x10;
+  if (mpuReads             != lineSnapC7) flags |= 0x20;
+  lineSnapQL = bnoLeft.quatUpdates;
+  lineSnapQR = bnoRight.quatUpdates;
+  lineSnapC7 = mpuReads;
+
+  String line;
+  line.reserve(220);
+  line = "D,";
+  line += String(collectSeq++);
+  line += ',';
+  line += String(nowMs);
+  line += ',';
+  line += String(flags);
+
+  SafeBNO085 *ears[2] = {&bnoLeft, &bnoRight};
+  const bool fresh[2] = {leftFresh, rightFresh};
+  for (int e = 0; e < 2; e++) {
+    if (fresh[e]) {
+      appendInts(line, ears[e]->rawQ, 4);
+      appendInts(line, ears[e]->rawAcc, 3);
+      appendInts(line, ears[e]->rawGyro, 3);
+      line += ',';
+      line += String(ears[e]->rvAccuracy);
+    } else {
+      appendEmpty(line, 11);
+    }
+  }
+  if (c7Fresh) appendInts(line, mpuRaw, 6);
+  else appendEmpty(line, 6);
+
+  Serial.println(line);
+  collectLines++;
+}
+
+// อัตราจริงต่อวินาทีของแต่ละ report ไว้ดูว่าบัส I2C รับไหวหรือไม่
+void logCollectRate() {
+  const uint32_t now[8] = {
+    bnoLeft.quatUpdates, bnoLeft.accUpdates, bnoLeft.gyroUpdates,
+    bnoRight.quatUpdates, bnoRight.accUpdates, bnoRight.gyroUpdates,
+    mpuReads, collectLines
+  };
+  uint32_t d[8];
+  for (int i = 0; i < 8; i++) {
+    d[i] = now[i] - rateSnap[i];
+    rateSnap[i] = now[i];
+  }
+  logStep("RATE L=q" + String(d[0]) + "/a" + String(d[1]) + "/g" + String(d[2]) +
+          " R=q" + String(d[3]) + "/a" + String(d[4]) + "/g" + String(d[5]) +
+          " C7=" + String(d[6]) + " out=" + String(d[7]) +
+          " rdFail L=" + String(bnoLeft.readFailures) + " R=" + String(bnoRight.readFailures));
+}
+
 void setup() {
   WiFi.mode(WIFI_OFF);
   btStop();
@@ -803,7 +1048,7 @@ void setup() {
   if (bootId == 0) bootId = 1;
   computeCvaPhi0();
 
-  Serial.begin(115200);
+  Serial.begin(SERIAL_BAUD);
   delay(500);
 
   Serial.println("\n============================================");
@@ -827,7 +1072,7 @@ void setup() {
 
   // เปิด Hardware Wire(21/22) ที่ความเร็ว 100kHz
   Wire.setBufferSize(256);
-  Wire.begin(I2C0_SDA_PIN, I2C0_SCL_PIN, 100000);
+  Wire.begin(I2C0_SDA_PIN, I2C0_SCL_PIN, NORMAL_I2C_HZ);
   Wire.setTimeOut(150);
   delay(200);
 
@@ -840,7 +1085,7 @@ void setup() {
     logStep("No ACK on (SDA=21,SCL=22) -> testing auto-swap (SDA=22,SCL=21)...");
     Wire.end();
     delay(30);
-    Wire.begin(I2C0_SCL_PIN, I2C0_SDA_PIN, 100000);
+    Wire.begin(I2C0_SCL_PIN, I2C0_SDA_PIN, NORMAL_I2C_HZ);
     Wire.setTimeOut(150);
     delay(100);
     const bool anySwapped = isDeviceOnBus(Wire, BNO_ADDR_4B) ||
@@ -853,7 +1098,7 @@ void setup() {
       // สลับกลับเป็น (SDA=21, SCL=22) ตามมาตรฐาน
       Wire.end();
       delay(20);
-      Wire.begin(I2C0_SDA_PIN, I2C0_SCL_PIN, 100000);
+      Wire.begin(I2C0_SDA_PIN, I2C0_SCL_PIN, NORMAL_I2C_HZ);
       Wire.setTimeOut(150);
       delay(50);
       logStep("Still NO_ACK on both (21,22) and (22,21) -> Please check jumper wires Using PinCheck above!");
@@ -907,15 +1152,21 @@ void loop() {
     } else if (cmd == 's' || cmd == 'S') {
       logStep("Received Serial command 's' -> running Dual-Bus I2C scan");
       scanI2CBus();
+    } else if (cmd == 'r' || cmd == 'R') {
+      setCollectMode(true);
+    } else if (cmd == 'n' || cmd == 'N') {
+      setCollectMode(false);
     }
   }
 
-  // 2. อ่านค่าจาก BNO085 ซ้าย(A)-ขวา(B) ทุก 15ms (~66 Hz)
-  if (nowPoll - lastEarPollMs >= EAR_POLL_MS) {
+  // 2. อ่านค่าจาก BNO085 ซ้าย(A)-ขวา(B) ทุก 15ms (~66 Hz) หรือทุกรอบ loop ในโหมดเก็บข้อมูล
+  //    โหมดเก็บข้อมูลอ่านต่อได้ถึง 4 แพ็กเก็ต แม้แพ็กเก็ตนั้นมีแค่ accel/gyro ไม่มี quaternion
+  const int maxEarPackets = collectMode ? 4 : 2;
+  if (collectMode || nowPoll - lastEarPollMs >= EAR_POLL_MS) {
     lastEarPollMs = nowPoll;
 
     if (hasLeftEar) {
-      for (int i = 0; i < 2; i++) {
+      for (int i = 0; i < maxEarPackets; i++) {
         if (pollEarBySide(true)) {
           leftHasSample = true;
           leftSampleMs  = millis();
@@ -926,14 +1177,14 @@ void loop() {
             offsetYawL   = yawL;
             leftZeroed   = true;
           }
-        } else {
+        } else if (!collectMode || !bnoLeft.lastPacketOk) {
           break;
         }
       }
     }
 
     if (hasRightEar) {
-      for (int i = 0; i < 2; i++) {
+      for (int i = 0; i < maxEarPackets; i++) {
         if (pollEarBySide(false)) {
           rightHasSample = true;
           rightSampleMs  = millis();
@@ -944,7 +1195,7 @@ void loop() {
             offsetYawR   = yawR;
             rightZeroed  = true;
           }
-        } else {
+        } else if (!collectMode || !bnoRight.lastPacketOk) {
           break;
         }
       }
@@ -978,10 +1229,9 @@ void loop() {
         logStep("LeftEar_A(0x4A) disconnected (NO_ACK)");
       } else {
         logStep("LeftEar_A(0x4A) ACK but stale (rxPkts=" + String(bnoLeft.rxPackets) +
-                ",rdFail=" + String(bnoLeft.readFailures) + ") -> re-enabling 0x28 + 0x05");
+                ",rdFail=" + String(bnoLeft.readFailures) + ") -> re-enabling reports");
         bnoLeft.flushPendingPackets(4);
-        bnoLeft.enableARVRStabilizedRotationVector(50);
-        bnoLeft.enableRotationVector(50);
+        enableEarReports(bnoLeft);
       }
     }
 
@@ -992,10 +1242,9 @@ void loop() {
         logStep("RightEar_B(0x4B) disconnected (NO_ACK)");
       } else {
         logStep("RightEar_B(0x4B) ACK but stale (rxPkts=" + String(bnoRight.rxPackets) +
-                ",rdFail=" + String(bnoRight.readFailures) + ") -> re-enabling 0x28 + 0x05");
+                ",rdFail=" + String(bnoRight.readFailures) + ") -> re-enabling reports");
         bnoRight.flushPendingPackets(4);
-        bnoRight.enableARVRStabilizedRotationVector(50);
-        bnoRight.enableRotationVector(50);
+        enableEarReports(bnoRight);
       }
     }
 
@@ -1004,14 +1253,14 @@ void loop() {
         leftBus = &Wire; leftAddr = BNO_ADDR_4A; hasLeftEar = true;
         bnoLeft.attach(&Wire, BNO_ADDR_4A);
         bnoLeft.flushPendingPackets(6);
-        bnoLeft.enableARVRStabilizedRotationVector(50);
-        logStep("LeftEar_A(0x4A@Wire(21/22)) hot-plugged -> enabled ARVR(50ms)");
+        enableEarReports(bnoLeft);
+        logStep("LeftEar_A(0x4A@Wire(21/22)) hot-plugged -> reports enabled");
       } else if (isDeviceOnBus(Wire1, BNO_ADDR_4A)) {
         leftBus = &Wire1; leftAddr = BNO_ADDR_4A; hasLeftEar = true;
         bnoLeft.attach(&Wire1, BNO_ADDR_4A);
         bnoLeft.flushPendingPackets(6);
-        bnoLeft.enableARVRStabilizedRotationVector(50);
-        logStep("LeftEar_A(0x4A@Wire1(18/19)) hot-plugged -> enabled ARVR(50ms)");
+        enableEarReports(bnoLeft);
+        logStep("LeftEar_A(0x4A@Wire1(18/19)) hot-plugged -> reports enabled");
       }
     }
 
@@ -1020,14 +1269,14 @@ void loop() {
         rightBus = &Wire; rightAddr = BNO_ADDR_4B; hasRightEar = true;
         bnoRight.attach(&Wire, BNO_ADDR_4B);
         bnoRight.flushPendingPackets(6);
-        bnoRight.enableARVRStabilizedRotationVector(50);
-        logStep("RightEar_B(0x4B@Wire(21/22)) hot-plugged -> enabled ARVR(50ms)");
+        enableEarReports(bnoRight);
+        logStep("RightEar_B(0x4B@Wire(21/22)) hot-plugged -> reports enabled");
       } else if (isDeviceOnBus(Wire1, BNO_ADDR_4B)) {
         rightBus = &Wire1; rightAddr = BNO_ADDR_4B; hasRightEar = true;
         bnoRight.attach(&Wire1, BNO_ADDR_4B);
         bnoRight.flushPendingPackets(6);
-        bnoRight.enableARVRStabilizedRotationVector(50);
-        logStep("RightEar_B(0x4B@Wire1(18/19)) hot-plugged -> enabled ARVR(50ms)");
+        enableEarReports(bnoRight);
+        logStep("RightEar_B(0x4B@Wire1(18/19)) hot-plugged -> reports enabled");
       }
     }
 
@@ -1096,8 +1345,26 @@ void loop() {
             ") | C7(fresh=" + String(c7Fresh ? 1 : 0) + ")");
   }
 
-  // 6. ส่ง JSON ตามสัญญา Protocol v2 ทุกๆ 200 ms (5 Hz)
-  if (nowMs - lastSendMs >= SEND_INTERVAL_MS) {
+  // 6. โหมดเก็บข้อมูล: บรรทัด D ทุก 20 ms, H ทุก 5 วินาที, RATE ทุก 1 วินาที
+  if (collectMode) {
+    if (nowMs - lastCollectMs >= COLLECT_INTERVAL_MS) {
+      lastCollectMs += COLLECT_INTERVAL_MS;
+      if (nowMs - lastCollectMs > 5 * COLLECT_INTERVAL_MS) lastCollectMs = nowMs; // ตามไม่ทันให้เริ่มนับใหม่
+      sendCollectLine(nowMs, leftFresh, rightFresh, c7Fresh);
+    }
+    if (nowMs - lastCollectHeaderMs >= COLLECT_HEADER_MS) {
+      lastCollectHeaderMs = nowMs;
+      printCollectHeader();
+    }
+    if (nowMs - lastRateLogMs >= RATE_LOG_MS) {
+      lastRateLogMs = nowMs;
+      logCollectRate();
+    }
+  }
+
+  // 7. ส่ง JSON ตามสัญญา Protocol v2 ทุกๆ 200 ms (5 Hz) หรือทุก 1 วินาทีในโหมดเก็บข้อมูล
+  const unsigned long jsonIntervalMs = collectMode ? COLLECT_JSON_MS : SEND_INTERVAL_MS;
+  if (nowMs - lastSendMs >= jsonIntervalMs) {
     lastSendMs = nowMs;
 
     String jsonPayload;
@@ -1126,5 +1393,5 @@ void loop() {
     Serial.println(jsonPayload);
   }
 
-  delay(2);
+  delay(collectMode ? 1 : 2);
 }

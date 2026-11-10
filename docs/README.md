@@ -8,5 +8,6 @@
 | วิธีใช้งานและภาพรวมไฟล์ | [../README.md](../README.md) |
 | สูตรมุมคอ (CVA): ตัวแปร, ค่าคงที่, ที่มา, ตัวอย่าง, ข้อจำกัด | [FORMULA.md](FORMULA.md) |
 | ทิศแกน pitch/roll/yaw และปัญหาแกนในเฟิร์มแวร์ | [SENSOR_AXES.md](SENSOR_AXES.md) |
+| เก็บข้อมูลดิบ 50 Hz: รูปแบบบรรทัด, คอลัมน์ CSV, วิธีเก็บที่แนะนำ | [DATA_COLLECTION.md](DATA_COLLECTION.md) |
 | ดีไซน์หน้าเว็บ (สี, ตัวอักษร, หลักการเขียนข้อความ) | [DESIGN.md](DESIGN.md) |
 | แผนและงานวิจัยเดิม | [../base_plan.md](../base_plan.md) (บางส่วนไม่ตรงกับโค้ดปัจจุบัน) |

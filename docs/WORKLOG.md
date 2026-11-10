@@ -25,6 +25,7 @@
   - `collect.html?demo`: โมเดลอยู่ข้างกราฟและขยับ, 375 px ไม่ล้น (โมเดลอยู่เหนือกราฟ), ธีมสว่างและมืด, console ไม่มี error
 - ยังไม่ได้ยืนยัน: โมเดลหันถูกทางกับหูฟังจริง
 - งานต่อไป: ลองกับหูฟังจริง
+- commit: `cee351e` push ขึ้น `web/feature/user-web` แล้ว
 
 ## 2026-11-10 commit และ push งานหน้าเก็บข้อมูล
 - งานที่ทำ: commit งานค้างทั้งหมดเป็น `32a8d2c` แล้ว push `feature/user-web` ขึ้น remote `web` (https://github.com/67160366/C7-earphone-web) ไม่ได้ push ไป `origin`

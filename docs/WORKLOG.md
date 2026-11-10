@@ -13,6 +13,13 @@
 
 ---
 
+## 2026-11-10 commit และ push งานหน้าเก็บข้อมูล
+- งานที่ทำ: commit งานค้างทั้งหมดเป็น `32a8d2c` แล้ว push `feature/user-web` ขึ้น remote `web` (https://github.com/67160366/C7-earphone-web) ไม่ได้ push ไป `origin`
+- ไฟล์ที่แตะ: `HANDOFF.md`, `docs/WORKLOG.md` (บันทึก commit)
+- ตรวจแล้ว: `check-web` 31/31 ผ่าน, `node --check assets/*.js` ผ่าน, `git diff --check` ผ่าน, push สำเร็จ (`ccc2e9b..32a8d2c`)
+- ยังไม่ได้ยืนยัน: เหมือนรายการก่อนหน้า (หน้า collect ยังต้องตรวจกับหูฟังจริงตามขั้นตอนท่า)
+- งานต่อไป: ตามรายการก่อนหน้า
+
 ## 2026-11-10 โมเดล 3 มิติและคำอธิบายค่าในหน้าเก็บข้อมูล
 - งานที่ทำ:
   - `c7-collect.js`:

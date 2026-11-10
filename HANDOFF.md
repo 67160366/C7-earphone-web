@@ -13,6 +13,7 @@
 - Clone จาก `https://github.com/67160162-BUU/C7-earphone.git` (upstream `main` = `cf27bb4`)
 - งานหน้าเว็บใหม่อยู่บน branch **`feature/user-web`** (ยังไม่ merge เข้า `main`)
 - push ขึ้น repo ใหม่แบบ public แล้ว: https://github.com/67160366/C7-earphone-web (remote ชื่อ `web`, default branch = `feature/user-web`)
+  - commit ล่าสุดที่ push แล้ว: `32a8d2c` (หน้าเก็บข้อมูล 50 Hz, โหมดเก็บข้อมูลในเฟิร์มแวร์, 460800 baud) เมื่อ 2026-11-10
   - `origin` ยังชี้ไป upstream `67160162-BUU/C7-earphone` และยังไม่เคย push ไปที่นั่น
   - fork เดิม `67160366/C7-earphone` เป็นของโปรเจกต์ HeadSet ไม่ได้แตะ
 - โปรเจกต์เดิม `D:\work\HeadSet` (branch `codex/hardware-demo-handoff`) เป็นงานคนละชุด แต่ arduino-cli และ ESP32 core 3.3.12 ที่ใช้ compile อยู่ใน `D:\work\HeadSet\.local`

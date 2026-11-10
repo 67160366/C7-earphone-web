@@ -356,63 +356,30 @@
         if (st.rec.rows.length && (!st.rec.downloaded || st.rec.on)) { e.preventDefault(); e.returnValue = ''; }
     });
 
-    /* ---------- 3D model (same head angles the firmware would send) ---------- */
+    /* ---------- 3D model beside the charts: posture from the same head angles the firmware would send ---------- */
     let model = null;
-    if (location.protocol === 'file:') {
-        $('cModelInfo').textContent = 'เปิดผ่าน http://127.0.0.1:8090 เพื่อดูโมเดล 3 มิติ';
-    } else {
+    if (location.protocol !== 'file:') {
         import(new URL('assets/neck-model.js', document.baseURI).href)
             .then((m) => m.createNeckModel($('cModel'), {
                 modelUrl: new URL('assets/models/head/LeePerrySmith.glb', document.baseURI).href,
                 normalUrl: new URL('assets/models/head/Infinite-Level_02_Tangent_SmoothUV.jpg', document.baseURI).href,
             }))
-            .then((m) => {
-                model = m;
-                model.setMirror($('cMirror').checked);
-                model.setView(document.querySelector('input[name="cView"]:checked').value);
-                model.setLive(false);
-                $('cModelInfo').textContent = 'ภาพศีรษะ: Infinite 3D Head Scan โดย Lee Perry-Smith (CC BY 3.0) ไม่ใช่สัดส่วนของผู้สวม ลากเพื่อหมุนมุมมอง';
-            })
-            .catch((e) => { console.error(e); $('cModelInfo').textContent = 'แสดงโมเดล 3 มิติไม่ได้ในเบราว์เซอร์นี้'; });
+            .then((m) => { model = m; model.setMirror(true); model.setView('front'); model.setLive(false); })
+            .catch((e) => { console.error(e); $('mSource').textContent = 'แสดงโมเดลไม่ได้'; });
     }
-    document.querySelectorAll('input[name="cView"]').forEach((r) => r.addEventListener('change', () => { if (model) model.setView(r.value); }));
-    $('cMirror').addEventListener('change', (e) => { if (model) model.setMirror(e.target.checked); });
     if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (model) model.refreshTheme(); });
 
-    const sgn = (v, d = 1) => (Number.isFinite(v) ? `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}°` : '–');
     function renderModel(now) {
         const h = st.head;
-        const fresh = h && now - Math.max(st.seen.L, st.seen.R) < 1500;
+        const fresh = !!h && now - Math.max(st.seen.L, st.seen.R) < 1500;
         const chip = $('mSource');
         chip.classList.toggle('sim', device.simulated);
         chip.dataset.state = fresh ? 'live' : 'idle';
-        chip.textContent = !fresh ? 'ยังไม่มีค่า' : `${device.simulated ? 'ข้อมูลจำลอง · ' : ''}${{ LR: 'เฉลี่ยสองหู', L: 'หูซ้ายอย่างเดียว', R: 'หูขวาอย่างเดียว' }[h.source]}`;
-        if (model) {
-            model.setLive(!!fresh);
-            model.setSensors({ left_fresh: !!(fresh && h.dL), right_fresh: !!(fresh && h.dR) });
-            model.setPose(fresh ? { tilt: h.tilt === null ? 0 : h.tilt, pitch: h.pitch, roll: h.roll, yaw: h.yaw } : { tilt: 0, pitch: 0, roll: 0, yaw: 0 });
-        }
-        // value, and a note when it is past the protocol limit the firmware clamps to
-        const cell = (id, raw, lim) => {
-            const el = $(id);
-            el.textContent = !fresh || raw === null ? '–' : sgn(raw) + (raw < lim[0] || raw > lim[1] ? ' (เกินช่วง)' : '');
-            el.dataset.tone = fresh && raw !== null && Math.abs(raw) >= 10 ? 'ok' : '';
-        };
-        cell('hPitch', h && h.raw.pitch, C7.LIMITS.pitch);
-        cell('hRoll', h && h.raw.roll, C7.LIMITS.roll);
-        cell('hYaw', h && h.raw.yaw, C7.LIMITS.yaw);
-        cell('hTilt', h && h.tiltRaw, C7.LIMITS.tilt);
-        const ear = (d) => (fresh && d ? d.map((v) => sgn(v, 0)).join(' / ') : '–');
-        $('hL').textContent = ear(h && h.dL); $('hR').textContent = ear(h && h.dR);
-        // Two ears moving a lot while the average stays flat = they cancel out (docs/SENSOR_AXES.md).
-        const adv = $('hAdvice');
-        let msg = '';
-        if (fresh && h.dL && h.dR) {
-            const big = (d) => Math.max(...d.map(Math.abs));
-            const avg = Math.max(Math.abs(h.raw.pitch), Math.abs(h.raw.roll), Math.abs(h.raw.yaw));
-            if (big(h.dL) > 12 && big(h.dR) > 12 && avg < big(h.dL) * 0.4) msg = 'สองหูขยับมากแต่ค่าเฉลี่ยแทบไม่ขยับ: แกนของสองหูหักล้างกัน ต้องแก้แกนในเฟิร์มแวร์ (docs/SENSOR_AXES.md)';
-        }
-        adv.textContent = msg; adv.dataset.tone = msg ? 'warn' : '';
+        chip.textContent = !fresh ? 'ยังไม่มีค่า' : device.simulated ? 'ข้อมูลจำลอง' : 'จากเซ็นเซอร์';
+        if (!model) return;
+        model.setLive(fresh);
+        model.setSensors({ left_fresh: fresh && !!h.dL, right_fresh: fresh && !!h.dR });
+        model.setPose(fresh ? { tilt: h.tilt === null ? 0 : h.tilt, pitch: h.pitch, roll: h.roll, yaw: h.yaw } : { tilt: 0, pitch: 0, roll: 0, yaw: 0 });
     }
 
     /* ---------- charts ---------- */

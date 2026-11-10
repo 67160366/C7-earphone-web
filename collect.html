@@ -125,49 +125,14 @@
         </section>
 
         <section class="col">
-            <div class="panel block model-panel">
-                <div class="chart-head">
-                    <h2>โมเดล 3 มิติ: ตรวจว่าหันถูกทาง</h2>
-                    <span id="mSource" class="chip">ยังไม่มีค่า</span>
-                </div>
-                <p class="small muted">ขยับตามมุมศีรษะที่คิดแบบเดียวกับเฟิร์มแวร์ทุกขั้น (มุมของชิปลบท่าเริ่มต้น แล้วเฉลี่ยสองหู) ไม่ได้สลับหรือกลับแกนให้ ถ้าโมเดลหันผิดทาง แปลว่าเฟิร์มแวร์ต้องแก้ตาม <code>docs/SENSOR_AXES.md</code> กด "ตั้งท่าเริ่มต้น" ตอนนั่งตรงก่อนเริ่มดู</p>
-                <div class="model-wrap">
-                    <div class="model-stage"><canvas id="cModel" aria-label="โมเดลศีรษะและคอ 3 มิติ ขยับตามค่าจากเซ็นเซอร์"></canvas></div>
-                    <div class="model-side">
-                        <div class="segmented view-pick" role="radiogroup" aria-label="มุมมองโมเดล">
-                            <label><input type="radio" name="cView" value="front" checked><span>ด้านหน้า</span></label>
-                            <label><input type="radio" name="cView" value="side"><span>ด้านข้าง</span></label>
-                            <label><input type="radio" name="cView" value="angle"><span>3 มิติ</span></label>
-                        </div>
-                        <label class="check small" for="cMirror"><input type="checkbox" id="cMirror" checked> แสดงแบบกระจก (เอียงหูขวาลง ภาพเอียงไปทางขวาของจอ)</label>
-                        <div class="table-scroll">
-                            <table class="axis-live num">
-                                <thead><tr><th scope="col">ลองทำท่า</th><th scope="col">ค่าที่ควรขยับ</th><th scope="col">ตอนนี้</th></tr></thead>
-                                <tbody>
-                                    <tr><td>ก้มหน้า</td><td>pitch บวก</td><td id="hPitch">–</td></tr>
-                                    <tr><td>เอียงหูขวาลง</td><td>roll บวก</td><td id="hRoll">–</td></tr>
-                                    <tr><td>หันซ้าย</td><td>yaw บวก</td><td id="hYaw">–</td></tr>
-                                    <tr><td>ยื่นคอ</td><td>tilt (MPU) บวก</td><td id="hTilt">–</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <p class="small muted">ทีละหู (Δ มุมของชิปจากท่าเริ่มต้น x / y / z)</p>
-                        <dl class="kv num ear-delta">
-                            <div><dt>หูซ้าย</dt><dd id="hL">–</dd></div>
-                            <div><dt>หูขวา</dt><dd id="hR">–</dd></div>
-                        </dl>
-                        <p id="hAdvice" class="small" role="status"></p>
-                    </div>
-                </div>
-                <p id="cModelInfo" class="small muted">กำลังโหลดโมเดล</p>
-            </div>
-
             <div class="panel block charts">
                 <div class="chart-head">
                     <h2>กราฟย้อนหลัง 10 วินาที</h2>
                     <div class="legend small"><span class="lx">x</span><span class="ly">y</span><span class="lz">z</span></div>
                 </div>
                 <p class="small muted">มุม x/y/z ของหูเป็นมุมตามแกนของชิป ยังไม่ใช่ก้ม/เอียง/หันของศีรษะ (ดู <code>docs/SENSOR_AXES.md</code>) มุมของ MPU คิดจาก accel มีแค่ x/y</p>
+                <div class="charts-body">
+                <div class="charts-main">
                 <div class="chart-group" data-s="L">
                     <h3>หูซ้าย</h3>
                     <figure><figcaption>มุม (°)</figcaption><canvas data-k="euler"></canvas></figure>
@@ -189,6 +154,12 @@
                 <div class="chart-group single" data-s="LR">
                     <h3>δ ซ้าย-ขวา (°)</h3>
                     <figure><canvas data-k="lr"></canvas></figure>
+                </div>
+                </div>
+                <figure class="model-mini">
+                    <div class="model-stage"><canvas id="cModel" aria-label="โมเดลศีรษะและคอ 3 มิติ ขยับตามท่าจากเซ็นเซอร์"></canvas></div>
+                    <figcaption><span id="mSource" class="chip">ยังไม่มีค่า</span><span class="small muted">ท่าทาง (ตั้งท่าเริ่มต้นก่อนดู)</span></figcaption>
+                </figure>
                 </div>
             </div>
 

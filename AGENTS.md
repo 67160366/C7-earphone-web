@@ -83,6 +83,7 @@ git diff --check
 | `assets/neck-model.js` | โมเดลศีรษะและคอ 3 มิติ (ES module, ต้องเปิดผ่าน http) |
 | `dev.html`, `assets/dev.js`, `assets/dev.css` | หน้านักพัฒนา, ตรวจทิศทางเซ็นเซอร์ |
 | `collect.html`, `assets/collect.js`, `assets/collect.css` | หน้าเก็บข้อมูลดิบ 50 Hz, กราฟ + โมเดล 3 มิติดูท่าทาง, ขั้นตอนท่า, ดาวน์โหลด CSV/JSON |
+| `wiring.html`, `assets/wiring.js` | แบบจัดสายหูฟังครอบหู 3 มิติ + ผังต่อขา (ข้อเสนอ ไม่ต่อ USB) |
 | `assets/c7-collect.js` | อ่านบรรทัด `H`/`D` ของโหมดเก็บข้อมูล, quaternion, CSV, ข้อมูลจำลอง (ดู `docs/DATA_COLLECTION.md`) |
 | `assets/c7-core.js` | สูตร CVA, ตรวจ Protocol v2 (รับ v1), เชื่อม USB, ข้อมูลจำลอง |
 | `assets/dev-formula.js` | แผงสูตร CVA ทีละขั้นในหน้า dev (SVG + โมเดล 3 มิติ) |

@@ -26,6 +26,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1
 - ข้อมูลจำลอง: http://127.0.0.1:8090/?demo
 - หน้า dev: http://127.0.0.1:8090/dev.html
 - หน้าเก็บข้อมูล: http://127.0.0.1:8090/collect.html (ข้อมูลจำลอง: `collect.html?demo`)
+- แบบจัดสายหูฟังครอบหู 3 มิติ: http://127.0.0.1:8090/wiring.html (ลิงก์จากหน้า dev)
+  - เป็นข้อเสนอการประกอบ ยังไม่ได้สร้างหรือต่อวงจรจริงตามผังนี้
+  - ESP32 ในครอบหูซ้าย, BNO085 ในครอบหูทั้ง 2 ข้าง, แบต + TP4056 + MT3608 ในครอบหูขวา, ก้านคาดหัว 5 คอร์ (5V, GND, 3V3, SDA, SCL), สายลง C7 5 คอร์ (3V3, GND, SDA, SCL, GPIO25)
+  - ผังขา ESP32 ตาม DevKitC V4 38 ขา; ตำแหน่งขา BNO085 ในผังเรียงให้อ่านง่าย ไม่ใช่ตำแหน่งจริงบนบอร์ด
+  - ถ้าสร้างแบบนี้จริง: แม่เหล็กลำโพงจะรบกวน magnetometer ขณะที่เฟิร์มแวร์ใช้ ARVR Rotation Vector (ใช้แม่เหล็ก) ควรพิจารณา Game Rotation Vector — ยังไม่ได้แก้เฟิร์มแวร์
+  - ใช้ Three.js และหัวสแกนที่มีในเครื่อง เพิ่ม `assets/models/head/Map-COL.jpg` (CC BY 3.0 ชุดเดียวกัน ดู `assets/vendor/README.md`)
 - บอร์ดที่ COM3 เป็นเฟิร์มแวร์รุ่น working tree (460800, sha256 `da83c32d…`) แล้ว (2026-11-10) ใช้กับ `collect.html` ได้
 - ต่อหูฟังได้ใน Chrome หรือ Edge ปิด Serial Monitor ตัวอื่นก่อนเชื่อมต่อ
 

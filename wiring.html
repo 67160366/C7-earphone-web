@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="th"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>C7 Headset Wiring</title>
+<script type="importmap">{"imports":{"three":"./assets/vendor/three/three.module.js"}}</script>
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<style>
+/* Layout: a large 3D bench on the left, a datasheet-style panel on the right; stacks on phones. */
+:root {
+  --bg: #e9eef0; --bench: #f6f8f9; --fg: #142024; --muted: #5a6b71; --line: #cfd9dd;
+  --accent: #0a7c86; --accent-soft: #d5ecee; --warn: #b4441f;
+  --n-3v3: #d0312d; --n-gnd: #2a2a2e; --n-sda: #1f63d6; --n-scl: #d99a00; --n-5v: #e5731b; --n-mot: #1f9d55;
+  --font-body: "IBM Plex Sans Thai", "Leelawadee UI", Tahoma, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1719; --bench: #152125; --fg: #e3ecee; --muted: #93a6ac; --line: #26373c;
+    --accent: #3cc3cc; --accent-soft: #143439; --warn: #f08a62; --n-gnd: #9aa1a7; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1719; --bench: #152125; --fg: #e3ecee; --muted: #93a6ac; --line: #26373c;
+  --accent: #3cc3cc; --accent-soft: #143439; --warn: #f08a62; --n-gnd: #9aa1a7; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 14px; }
+h1 { font-size: 1.5rem; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0; }
+.sub a { color: var(--accent); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
+@media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.stage {
+  position: relative; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  height: min(80vh, 800px); min-height: 440px;
+  background: radial-gradient(ellipse at 50% 35%, #5d6b72 0%, #2b3439 55%, #161c1f 100%);
+}
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.stage canvas:active { cursor: grabbing; }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.tag {
+  position: absolute; transform: translate(-50%, -100%); white-space: nowrap; font: 600 12px var(--font-body);
+  background: rgba(16, 24, 27, .8); border: 1px solid rgba(255,255,255,.18); color: #eef4f5;
+  padding: 2px 8px; border-radius: 6px; pointer-events: auto; cursor: pointer;
+}
+.tag::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 10px; background: rgba(255,255,255,.5); }
+.tag[data-on="1"] { background: #0a7c86; border-color: #3cc3cc; }
+.hint { position: absolute; left: 12px; bottom: 10px; right: 12px; font-size: 12px; color: #c4d0d4; pointer-events: none; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; color: #dfe8ea; font-size: 14px; pointer-events: none; }
+.lenbox {
+  position: absolute; right: 12px; top: 12px; background: rgba(16, 24, 27, .8); color: #eef4f5;
+  border: 1px solid rgba(255,255,255,.16); border-radius: 10px; padding: 8px 12px; font-size: 12px; min-width: 200px;
+}
+.lenbox b { font-size: 11px; color: #a9bbc0; font-weight: 600; letter-spacing: .04em; }
+.lenrow { display: flex; justify-content: space-between; gap: 12px; }
+.panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.card { background: var(--bench); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: .8rem; margin: 0 0 10px; color: var(--muted); letter-spacing: .06em; }
+.seg { display: grid; grid-template-columns: repeat(var(--cols, 2), 1fr); gap: 6px; margin-bottom: 10px; }
+.seg button {
+  font: inherit; font-size: 13px; padding: 7px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: transparent; color: var(--fg); cursor: pointer; text-align: left; line-height: 1.3;
+}
+.seg button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.seg small { display: block; color: var(--muted); font-size: 11px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.slider { display: grid; grid-template-columns: 82px 1fr 48px; align-items: center; gap: 8px; font-size: 13px; }
+.slider input { width: 100%; accent-color: var(--accent); }
+.row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; margin-top: 8px; }
+.row label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.nets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 13px; }
+.nets label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--bench); cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--accent); }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+td.route { color: var(--muted); font-size: 12px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--line); flex: none; }
+.note { font-size: 12.5px; color: var(--muted); margin: 8px 0 0; }
+.note.warn { color: var(--warn); }
+#info h3 { margin: 0 0 4px; font-size: 1rem; }
+#info p { margin: 4px 0; font-size: 13.5px; }
+#info ul { margin: 6px 0 0; padding-left: 18px; font-size: 13.5px; }
+.cables { display: grid; gap: 8px; }
+.cable { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.cable b { display: block; margin-bottom: 4px; }
+.cores { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.cores span { display: inline-flex; align-items: center; }
+.bom td:last-child { white-space: nowrap; }
+.credit { font-size: 11.5px; color: var(--muted); margin-top: 14px; }
+.credit a { color: var(--accent); }
+</style>
+</head><body>
+<header>
+  <h1>หูฟังครอบหู C7 · แบบจัดสาย</h1>
+  <p class="sub"><a href="dev.html">หน้า dev</a> · หัวสแกนจากคนจริง · BNO085 ติดในครอบหูทั้ง 2 ข้าง · ESP32 ในครอบหูซ้าย · MPU6050 ที่ C7</p>
+</header>
+
+<div class="grid">
+  <div class="stage" id="stage">
+    <canvas id="c" aria-label="โมเดลหูฟังครอบหูบนศีรษะ และผังต่อขา ลากเพื่อหมุน"></canvas>
+    <div class="labels" id="labels"></div>
+    <div class="loading" id="loading">กำลังโหลดโมเดลศีรษะ…</div>
+    <div class="lenbox mono" id="lenbox" aria-live="polite">
+      <b>สายลง C7 (ครอบหูซ้าย → C7)</b>
+      <div class="lenrow"><span>ตอนนี้</span><span id="lenNow">–</span></div>
+      <div class="lenrow"><span>ยาวสุดที่เจอ</span><span id="lenMax">–</span></div>
+      <div class="lenrow"><span>ควรตัด</span><span id="lenCut">–</span></div>
+    </div>
+    <div class="hint" id="hint">ลากเพื่อหมุน · ล้อเมาส์/สองนิ้วเพื่อซูม · แตะชิ้นส่วนเพื่อดูรายละเอียด</div>
+  </div>
+
+  <div class="panel">
+    <div class="card">
+      <h2>มุมมอง</h2>
+      <div class="seg" style="--cols:3" role="group" aria-label="มุมมอง">
+        <button id="mWear" aria-pressed="true">แบบปกติ<small>ตอนสวมใส่</small></button>
+        <button id="mXray" aria-pressed="false">มองทะลุ<small>อุปกรณ์ข้างใน</small></button>
+        <button id="mPins" aria-pressed="false">ผังต่อขา<small>ESP32 ↔ เซ็นเซอร์</small></button>
+      </div>
+      <div class="seg" role="group" aria-label="บัส I2C">
+        <button id="busOne" aria-pressed="true">บัสเดียว<small>GPIO21/22 (เฟิร์มแวร์ตอนนี้)</small></button>
+        <button id="busTwo" aria-pressed="false">แยกบัส<small>BNO ขวาไป GPIO18/19</small></button>
+      </div>
+      <h2 style="margin-top:12px">เปิด/ปิดสายในผังต่อขา</h2>
+      <div class="nets" id="nets"></div>
+      <div class="row"><label><input type="checkbox" id="pinNames" checked> ชื่อขาทุกขา</label><label><input type="checkbox" id="tags" checked> ป้ายชื่อ</label></div>
+    </div>
+
+    <div class="card" id="poseCard">
+      <h2>ลองขยับศีรษะ</h2>
+      <div class="slider"><label for="sPitch">ก้ม/เงย</label><input id="sPitch" type="range" min="-30" max="45" value="0"><span class="mono" id="vPitch">0°</span></div>
+      <div class="slider"><label for="sYaw">หันซ้าย/ขวา</label><input id="sYaw" type="range" min="-70" max="70" value="0"><span class="mono" id="vYaw">0°</span></div>
+      <div class="slider"><label for="sRoll">เอียงหู</label><input id="sRoll" type="range" min="-30" max="30" value="0"><span class="mono" id="vRoll">0°</span></div>
+      <div class="row">
+        <button class="btn" id="auto">ขยับอัตโนมัติ</button>
+        <button class="btn ghost" id="reset">ท่าตรง</button>
+      </div>
+      <p class="note">ค่าบวก: ก้ม, หันซ้าย, หูขวาลง (ตาม SENSOR_AXES.md)</p>
+    </div>
+
+    <div class="card" id="info">
+      <h3>แตะชิ้นส่วนในโมเดล</h3>
+      <p>เลือกครอบหู ก้านคาดหัว สาย หรือกล่อง C7 เพื่อดูว่าข้างในมีอะไรและต่อขาไหน</p>
+    </div>
+
+    <div class="card">
+      <h2>สายที่ออกนอกครอบหู มีแค่ 2 เส้น</h2>
+      <div class="cables" id="cables"></div>
+      <p class="note" id="busNote"></p>
+    </div>
+
+    <div class="card">
+      <h2>ตารางต่อขา</h2>
+      <div class="tablewrap"><table id="pinTable"></table></div>
+      <p class="note">ลำดับขาของ ESP32 ในผังตาม ESP32-DevKitC V4 (38 ขา) ถ้าใช้บอร์ด 30 ขา ตำแหน่งขาต่างกันแต่หมายเลข GPIO เหมือนเดิม ส่วนขาของบอร์ด BNO085 ในผังจัดเรียงให้อ่านง่าย ตำแหน่งจริงให้ดูชื่อขาบนบอร์ด</p>
+    </div>
+
+    <div class="card">
+      <h2>ข้อควรรู้เมื่อใส่เซ็นเซอร์ในครอบหู</h2>
+      <ul class="note" style="padding-left:18px;margin:0">
+        <li>ลำโพงในครอบหูมีแม่เหล็ก ทำให้ค่าทิศ (yaw) ของ BNO085 เพี้ยนได้ เฟิร์มแวร์ตอนนี้ใช้รายงาน ARVR Rotation Vector ซึ่งใช้แม่เหล็ก ถ้าวางเซ็นเซอร์ใกล้ลำโพง ควรเปลี่ยนไปใช้ Game Rotation Vector (ไม่ใช้แม่เหล็ก) หรือวางห่างลำโพงอย่างน้อย 3–4 ซม.</li>
+        <li>หูฟังต้องแนบศีรษะแน่น ถ้าครอบหูเลื่อน ค่ามุมจะไม่ใช่มุมศีรษะ</li>
+        <li>BNO085 2 ตัวมี pull-up 10 kΩ ต่อตัว และ GY-521 มี 4.7 kΩ รวมบนบัสเดียวประมาณ 1.9 kΩ ยังใช้ได้ที่ 3.3 V</li>
+        <li>อย่าเสียบ USB ขณะเปิดสวิตช์แบต เพราะไฟ 5V จากบูสต์กับ USB จะชนกัน</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>ของที่ใช้ (ขนาดตามที่โมเดลไว้)</h2>
+      <div class="tablewrap"><table class="bom">
+        <tr><th>ชิ้นส่วน</th><th>ขนาด</th></tr>
+        <tr><td>ครอบหูแบบปิด (เคสพิมพ์ 3 มิติ) × 2</td><td class="mono">100×84×52 มม.</td></tr>
+        <tr><td>ลำโพง 40 มม. × 2</td><td class="mono">Ø40 มม.</td></tr>
+        <tr><td>Adafruit BNO085 (#4754) × 2</td><td class="mono">25.6×22.7 มม.</td></tr>
+        <tr><td>ESP32-DevKitC (ถอดขา header)</td><td class="mono">54.4×27.9 มม.</td></tr>
+        <tr><td>LiPo 503035 500 mAh</td><td class="mono">35×30×5 มม.</td></tr>
+        <tr><td>TP4056 USB-C (ชาร์จ) + MT3608 (บูสต์ 5V) + สวิตช์</td><td class="mono">26×17 / 36×17 มม.</td></tr>
+        <tr><td>GY-521 MPU6050</td><td class="mono">21×16 มม.</td></tr>
+        <tr><td>มอเตอร์สั่นเหรียญ + ทรานซิสเตอร์ NPN + ไดโอด</td><td class="mono">Ø10×2.7 มม.</td></tr>
+        <tr><td>สายซิลิโคน 5 คอร์ 28AWG (ในก้านคาด + สายลง C7)</td><td class="mono">Ø3.4 มม.</td></tr>
+      </table></div>
+      <p class="credit">หัวสแกน: “Infinite, 3D Head Scan” โดย Lee Perry-Smith, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>, อ้างอิงจาก triplegangers.com ไฟล์จากตัวอย่างของ three.js (ดู assets/vendor/README.md) ส่วนหูฟังและบอร์ดสร้างจากโค้ดตามขนาดในตาราง</p>
+    </div>
+  </div>
+</div>
+<script type="module" src="assets/wiring.js"></script>
+</body></html>

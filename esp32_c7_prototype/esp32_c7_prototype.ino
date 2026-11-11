@@ -48,6 +48,7 @@
 #define REPORTID_ACCELEROMETER                    0x01
 #define REPORTID_GYROSCOPE_CALIBRATED             0x02
 #define REPORTID_ROTATION_VECTOR                  0x05
+#define REPORTID_MAGNETIC_FIELD                   0x03
 #define REPORTID_GAME_ROTATION_VECTOR             0x08
 #define REPORTID_ARVR_STABILIZED_ROTATION_VECTOR  0x28
 #define REPORTID_ARVR_STABILIZED_GAME_ROT_VECTOR  0x29
@@ -77,6 +78,11 @@ public:
   int16_t   rawAcc[3]  = {0, 0, 0};        // report 0x01 m/s^2 (Q8)
   int16_t   rawGyro[3] = {0, 0, 0};        // report 0x02 rad/s (Q9)
   uint8_t   rvAccuracy = 0;                // status bit 0-1 ของ rotation vector (0 = ไม่น่าเชื่อถือ, 3 = ดีมาก)
+  uint16_t  rvErrQ12   = 0;                // ค่าประมาณความคลาดเคลื่อนของทิศจาก rotation vector (rad, Q12) ไบต์ 12-13
+  int16_t   rawMag[3]  = {0, 0, 0};        // report 0x03 สนามแม่เหล็ก uT (Q4) ไว้ดูว่ามีแม่เหล็กลำโพงรบกวนหรือไม่
+  uint8_t   magAccuracy = 0;               // status bit 0-1 ของ report 0x03
+  uint32_t  magUpdates  = 0;
+  uint8_t   cmdSeq      = 0;               // ลำดับของ command request (0xF2)
   uint32_t  quatUpdates = 0;
   uint32_t  accUpdates  = 0;
   uint32_t  gyroUpdates = 0;
@@ -227,6 +233,20 @@ public:
     return sendPacket(SHTP_CHANNEL_CONTROL, 17);
   }
 
+  // SH-2 command 0x07 (Configure ME Calibration): เปิด dynamic calibration ของ accel / gyro / เข็มทิศ
+  // ถ้าไม่เปิด ชิปจะไม่ปรับเทียบเอง และความแม่นยำของ rotation vector อาจค้างที่ 0
+  bool configureCalibration(bool accel, bool gyro, bool mag) {
+    memset(shtpData, 0, 12);
+    shtpData[0] = 0xF2;            // command request
+    shtpData[1] = cmdSeq++;
+    shtpData[2] = 0x07;            // ME calibration
+    shtpData[3] = accel ? 1 : 0;   // P0
+    shtpData[4] = gyro ? 1 : 0;    // P1
+    shtpData[5] = mag ? 1 : 0;     // P2
+    shtpData[6] = 0x00;            // P3 subcommand: configure
+    return sendPacket(SHTP_CHANNEL_CONTROL, 12);
+  }
+
   void enableARVRStabilizedRotationVector(uint16_t timeBetweenReportsMs) {
     setFeatureCommand(REPORTID_ARVR_STABILIZED_ROTATION_VECTOR, timeBetweenReportsMs);
   }
@@ -285,7 +305,8 @@ public:
     switch (id) {
       case REPORTID_ACCELEROMETER:
       case REPORTID_GYROSCOPE_CALIBRATED:
-      case 0x03: case 0x04: case 0x06:            // magnetic field, linear accel, gravity
+      case REPORTID_MAGNETIC_FIELD:
+      case 0x04: case 0x06:                       // linear accel, gravity
         return 10;
       case 0x07: case 0x0F:                       // uncalibrated gyro / magnetic field
         return 16;
@@ -347,6 +368,7 @@ public:
         quatK    = (float)rawQ[3] * scale;
         quatReal = (float)rawQ[0] * scale;
         rvAccuracy = r[2] & 0x03;
+        if (len >= 14) rvErrQ12 = (uint16_t)le16(r + 12);
         quatUpdates++;
         quatRep = id;
       } else if (id == REPORTID_ACCELEROMETER) {
@@ -355,6 +377,10 @@ public:
       } else if (id == REPORTID_GYROSCOPE_CALIBRATED) {
         rawGyro[0] = le16(r + 4); rawGyro[1] = le16(r + 6); rawGyro[2] = le16(r + 8);
         gyroUpdates++;
+      } else if (id == REPORTID_MAGNETIC_FIELD) {
+        rawMag[0] = le16(r + 4); rawMag[1] = le16(r + 6); rawMag[2] = le16(r + 8);
+        magAccuracy = r[2] & 0x03;
+        magUpdates++;
       }
     }
     return quatRep != 0 ? quatRep : firstRep;
@@ -431,9 +457,10 @@ bool  mpuTiltOk = false;
 float cvaAngle  = 52.05f;
 
 // ---------- โหมดเก็บข้อมูล (collect mode, docs/DATA_COLLECTION.md) ----------
-const int           COLLECT_FORMAT       = 1;      // เปลี่ยนเมื่อเปลี่ยนลำดับคอลัมน์ของบรรทัด D
+const int           COLLECT_FORMAT       = 2;      // เปลี่ยนเมื่อเปลี่ยนลำดับคอลัมน์ของบรรทัด D (2 = เพิ่มอายุค่า L/R/C7 ท้ายบรรทัด)
 const unsigned long COLLECT_INTERVAL_MS  = 20;     // ส่งบรรทัด D ทุก 20 ms (50 Hz)
 const uint16_t      COLLECT_REPORT_MS    = 20;     // ขอ report จาก BNO085 ทุก 20 ms
+const uint16_t      COLLECT_MAG_MS       = 100;    // สนามแม่เหล็ก 10 Hz ไว้ตรวจการรบกวน (log ACCURACY ไม่อยู่ในบรรทัด D)
 const unsigned long COLLECT_JSON_MS      = 1000;   // JSON v2 ระหว่างเก็บข้อมูล (ให้ zero และ calibration_id ยังทำงาน)
 const unsigned long COLLECT_HEADER_MS    = 5000;   // ส่ง H ซ้ำ เผื่อหน้าเว็บต่อเข้ามากลางทาง
 const unsigned long RATE_LOG_MS          = 1000;
@@ -646,12 +673,16 @@ bool readC7PitchFromMpu6050(float &angleOut) {
 
 // เปิด report ตามโหมด: ปกติ = 0x28 + 0x05 ทุก 50 ms, เก็บข้อมูล = 0x28 + 0x01 + 0x02 ทุก 20 ms
 void enableEarReports(SafeBNO085 &bno) {
+  bno.configureCalibration(true, true, true);
+  delay(3);
   if (collectMode) {
     bno.setFeatureCommand(REPORTID_ARVR_STABILIZED_ROTATION_VECTOR, COLLECT_REPORT_MS);
     delay(3);
     bno.setFeatureCommand(REPORTID_ACCELEROMETER, COLLECT_REPORT_MS);
     delay(3);
     bno.setFeatureCommand(REPORTID_GYROSCOPE_CALIBRATED, COLLECT_REPORT_MS);
+    delay(3);
+    bno.setFeatureCommand(REPORTID_MAGNETIC_FIELD, COLLECT_MAG_MS); // ดูสนามแม่เหล็กใน log ACCURACY
   } else {
     bno.enableARVRStabilizedRotationVector(50);
     bno.enableRotationVector(50);
@@ -670,6 +701,8 @@ void switchEarReports(SafeBNO085 &bno, bool collect) {
     bno.setFeatureCommand(REPORTID_ACCELEROMETER, 0);
     delay(3);
     bno.setFeatureCommand(REPORTID_GYROSCOPE_CALIBRATED, 0);
+    delay(3);
+    bno.setFeatureCommand(REPORTID_MAGNETIC_FIELD, 0);
     delay(3);
   }
   enableEarReports(bno);
@@ -709,6 +742,36 @@ bool pollEarBySide(bool isLeft) {
   return false;
 }
 
+// อ่าน 1 แพ็กเก็ตของหูหนึ่งข้าง ถ้าได้ quaternion จะจดเวลาที่อ่านได้ (ใช้เป็นอายุค่าในบรรทัด D)
+// คืน true ถ้าควรอ่านแพ็กเก็ตต่อในรอบนี้
+bool pollEarStep(bool isLeft) {
+  if (pollEarBySide(isLeft)) {
+    if (isLeft) {
+      leftHasSample = true;
+      leftSampleMs  = millis();
+      leftQuatCount++;
+      if (!leftZeroed) {
+        offsetPitchL = pitchL;
+        offsetRollL  = rollL;
+        offsetYawL   = yawL;
+        leftZeroed   = true;
+      }
+    } else {
+      rightHasSample = true;
+      rightSampleMs  = millis();
+      rightQuatCount++;
+      if (!rightZeroed) {
+        offsetPitchR = pitchR;
+        offsetRollR  = rollR;
+        offsetYawR   = yawR;
+        rightZeroed  = true;
+      }
+    }
+    return true;
+  }
+  return collectMode && (isLeft ? bnoLeft : bnoRight).lastPacketOk;
+}
+
 bool initEarSlot(bool isLeft, TwoWire &bus, uint8_t addr) {
   SafeBNO085 &bno            = isLeft ? bnoLeft       : bnoRight;
   bool &hasSampleOut         = isLeft ? leftHasSample  : rightHasSample;
@@ -728,6 +791,8 @@ bool initEarSlot(bool isLeft, TwoWire &bus, uint8_t addr) {
   logStep(tag + " ACK -> SafeBNO085 init (32B chunks, NO 50ms softReset)...");
   bno.flushPendingPackets(10);
   const bool pidOk  = bno.requestProductId();
+  delay(15);
+  bno.configureCalibration(true, true, true);
   delay(15);
   const bool featOk = bno.setFeatureCommand(REPORTID_ARVR_STABILIZED_ROTATION_VECTOR, 50);
 
@@ -751,6 +816,8 @@ bool initEarSlot(bool isLeft, TwoWire &bus, uint8_t addr) {
 
   if (bno.safeSoftResetAndWait()) {
     bno.requestProductId();
+    delay(15);
+    bno.configureCalibration(true, true, true);
     delay(15);
     bno.enableARVRStabilizedRotationVector(50);
     delay(15);
@@ -939,7 +1006,7 @@ void printCollectHeader() {
   h += ",calibration_id=" + String(calibrationId);
   h += ",rate_hz=" + String(1000UL / COLLECT_INTERVAL_MS);
   h += ",i2c_hz=" + String(COLLECT_I2C_HZ);
-  h += ",bno_q=14,bno_acc_q=8,bno_gyro_q=9,mpu_acc_lsb_g=16384,mpu_gyro_lsb_dps=131";
+  h += ",bno_q=14,bno_acc_q=8,bno_gyro_q=9,mpu_acc_lsb_g=16384,mpu_gyro_lsb_dps=131,age=ms,ear_poll=interleaved";
   h += ",left=" + String(hasLeftEar ? 1 : 0);
   h += ",right=" + String(hasRightEar ? 1 : 0);
   h += ",c7=" + String(hasC7Mpu ? 1 : 0);
@@ -979,7 +1046,8 @@ void appendEmpty(String &s, int n) {
   for (int i = 0; i < n; i++) s += ',';
 }
 
-// D,seq,t_ms,flags, L(qw qx qy qz ax ay az gx gy gz acc), R(...), C7(ax ay az gx gy gz)
+// D,seq,t_ms,flags, L(qw qx qy qz ax ay az gx gy gz acc), R(...), C7(ax ay az gx gy gz), L_age,R_age,C7_age
+// age = t_ms ลบเวลาที่ ESP32 อ่านค่านั้นได้ (ms) ใช้ดูว่าค่าของสองหูในบรรทัดเดียวกันห่างกันกี่ ms (ว่าง = ไม่ fresh)
 // flags: bit0-2 = L/R/C7 fresh, bit3-5 = L/R/C7 มีค่าใหม่ตั้งแต่บรรทัดก่อน ตัวที่ไม่ fresh ส่งช่องว่าง
 void sendCollectLine(unsigned long nowMs, bool leftFresh, bool rightFresh, bool c7Fresh) {
   uint8_t flags = 0;
@@ -994,7 +1062,7 @@ void sendCollectLine(unsigned long nowMs, bool leftFresh, bool rightFresh, bool 
   lineSnapC7 = mpuReads;
 
   String line;
-  line.reserve(220);
+  line.reserve(240);
   line = "D,";
   line += String(collectSeq++);
   line += ',';
@@ -1018,6 +1086,13 @@ void sendCollectLine(unsigned long nowMs, bool leftFresh, bool rightFresh, bool 
   if (c7Fresh) appendInts(line, mpuRaw, 6);
   else appendEmpty(line, 6);
 
+  const bool          ageFresh[3] = {leftFresh, rightFresh, c7Fresh};
+  const unsigned long ageFrom[3]  = {leftSampleMs, rightSampleMs, c7SampleMs};
+  for (int k = 0; k < 3; k++) {
+    line += ',';
+    if (ageFresh[k]) line += String((unsigned long)(nowMs - ageFrom[k]));
+  }
+
   Serial.println(line);
   collectLines++;
 }
@@ -1038,6 +1113,21 @@ void logCollectRate() {
           " R=q" + String(d[3]) + "/a" + String(d[4]) + "/g" + String(d[5]) +
           " C7=" + String(d[6]) + " out=" + String(d[7]) +
           " rdFail L=" + String(bnoLeft.readFailures) + " R=" + String(bnoRight.readFailures));
+  logStep("ACCURACY L=" + earAccuracyText(bnoLeft) + " R=" + earAccuracyText(bnoRight));
+}
+
+// ความแม่นยำของหูหนึ่งข้าง: rv = 0-3 ของ rotation vector, err = ค่าประมาณความคลาดเคลื่อน (องศา),
+// mag = ขนาดสนามแม่เหล็ก (uT, โลกปกติราว 25-65) / ความแม่นยำของเข็มทิศ 0-3 / จำนวน report ต่อรอบ
+String earAccuracyText(SafeBNO085 &bno) {
+  static uint32_t lastMag[2] = {0, 0};
+  const int k = (&bno == &bnoLeft) ? 0 : 1;
+  const uint32_t magN = bno.magUpdates - lastMag[k];
+  lastMag[k] = bno.magUpdates;
+  const float errDeg = (float)bno.rvErrQ12 / 4096.0f * (180.0f / PI);
+  const float b = sqrtf((float)bno.rawMag[0] * bno.rawMag[0] + (float)bno.rawMag[1] * bno.rawMag[1] +
+                        (float)bno.rawMag[2] * bno.rawMag[2]) / 16.0f; // Q4 -> uT
+  return "rv" + String(bno.rvAccuracy) + "/err" + String(errDeg, 1) + "deg/mag" + String(b, 1) + "uT/a" +
+         String(bno.magAccuracy) + "/n" + String(magN);
 }
 
 void setup() {
@@ -1161,44 +1251,15 @@ void loop() {
 
   // 2. อ่านค่าจาก BNO085 ซ้าย(A)-ขวา(B) ทุก 15ms (~66 Hz) หรือทุกรอบ loop ในโหมดเก็บข้อมูล
   //    โหมดเก็บข้อมูลอ่านต่อได้ถึง 4 แพ็กเก็ต แม้แพ็กเก็ตนั้นมีแค่ accel/gyro ไม่มี quaternion
+  //    อ่านสลับซ้าย-ขวาทีละแพ็กเก็ต (ไม่อ่านซ้ายจนหมดก่อน) ให้ค่าของสองหูในบรรทัดเดียวกันมาจากเวลาใกล้กันที่สุด
   const int maxEarPackets = collectMode ? 4 : 2;
   if (collectMode || nowPoll - lastEarPollMs >= EAR_POLL_MS) {
     lastEarPollMs = nowPoll;
-
-    if (hasLeftEar) {
-      for (int i = 0; i < maxEarPackets; i++) {
-        if (pollEarBySide(true)) {
-          leftHasSample = true;
-          leftSampleMs  = millis();
-          leftQuatCount++;
-          if (!leftZeroed) {
-            offsetPitchL = pitchL;
-            offsetRollL  = rollL;
-            offsetYawL   = yawL;
-            leftZeroed   = true;
-          }
-        } else if (!collectMode || !bnoLeft.lastPacketOk) {
-          break;
-        }
-      }
-    }
-
-    if (hasRightEar) {
-      for (int i = 0; i < maxEarPackets; i++) {
-        if (pollEarBySide(false)) {
-          rightHasSample = true;
-          rightSampleMs  = millis();
-          rightQuatCount++;
-          if (!rightZeroed) {
-            offsetPitchR = pitchR;
-            offsetRollR  = rollR;
-            offsetYawR   = yawR;
-            rightZeroed  = true;
-          }
-        } else if (!collectMode || !bnoRight.lastPacketOk) {
-          break;
-        }
-      }
+    bool moreLeft  = hasLeftEar;
+    bool moreRight = hasRightEar;
+    for (int i = 0; i < maxEarPackets && (moreLeft || moreRight); i++) {
+      if (moreLeft)  moreLeft  = pollEarStep(true);
+      if (moreRight) moreRight = pollEarStep(false);
     }
   }
 

@@ -5,11 +5,31 @@
 }
 :root[data-theme="dark"] { --sx: #FB923C; --sy: #3CC9B8; --sz: #A99CF5; --rec: #F87171; }
 
-.collect-grid { display: grid; gap: 16px; padding-block: 16px 32px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: start; }
+/* wider than the other pages: status, charts and 3D rotation sit side by side */
+.wide .wrap { max-width: 1840px; }
+.collect-page { display: grid; gap: 16px; padding-block: 16px 32px; }
+.monitor {
+    display: grid; gap: 16px; align-items: start;
+    grid-template-columns: minmax(230px, 0.62fr) minmax(0, 1.25fr) minmax(0, 1.2fr);
+    grid-template-areas: "status charts rot";
+}
+.m-status { grid-area: status; }
+.m-charts { grid-area: charts; }
+.m-rot { grid-area: rot; }
+.work { display: grid; gap: 16px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.work .notes { grid-column: 1 / -1; }
+.collect-page .block { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+
 .sim-banner { background: var(--sim-soft); color: var(--ink); border-bottom: 1px solid var(--line); font-size: var(--fs-s); }
 .sim-banner .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-block: 8px; }
 .topbar .wrap > a.small { font-size: var(--fs-s); }
 
+/* status column is narrow on wide screens: stack the sensor cards */
+.m-status .sensors { grid-template-columns: minmax(0, 1fr); }
+.m-status .kv { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.m-status .kv div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.m-status .kv dd { text-align: right; }
+.sub-h { font-size: var(--fs-s); color: var(--ink-2); margin-top: 2px; }
 .sensor .num { font-size: var(--fs-xs); color: var(--ink-2); }
 .rec-btn[aria-pressed="true"] { background: var(--rec); border-color: var(--rec); color: #fff; }
 .rec-btn[aria-pressed="true"]::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: currentColor; animation: rec-blink 1s steps(2, start) infinite; }
@@ -47,40 +67,51 @@ details.sub[open] { display: grid; gap: 10px; }
 .legend .ly { color: var(--sy); }
 .legend .lz { color: var(--sz); }
 .chart-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.chart-group.pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .chart-group h3 { grid-column: 1 / -1; font-size: var(--fs-s); }
-.chart-group.single { grid-template-columns: minmax(0, 1fr); }
 .chart-group figure { margin: 0; display: grid; gap: 2px; min-width: 0; }
 .chart-group figcaption { font-size: var(--fs-xs); color: var(--ink-2); }
-.chart-group canvas { width: 100%; height: 96px; display: block; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
-.chart-group.single canvas { height: 72px; }
+.chart-group canvas { width: 100%; height: 104px; display: block; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
+.chart-group.pair canvas { height: 76px; }
 
-.collect-grid .block { grid-template-columns: minmax(0, 1fr); min-width: 0; }
-.charts-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 0.42fr); gap: 12px; align-items: start; }
-.charts-main { display: grid; gap: 12px; min-width: 0; }
-.model-mini { margin: 0; display: grid; gap: 6px; position: sticky; top: 12px; min-width: 0; }
-.model-mini .model-stage { aspect-ratio: 3 / 4; max-height: 420px; }
-.model-mini figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* 3D rotation panel */
+.rot-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rot-controls .segmented { flex: 1 1 210px; }
+.rot-controls .segmented span { min-height: 34px; }
+.axes-stage { aspect-ratio: 4 / 3; max-height: 460px; }
+.compare { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 16px; }
+.readout td { font-family: var(--mono); font-size: var(--fs-xs); white-space: nowrap; }
+.readout tbody th { font-family: var(--font); font-size: var(--fs-xs); font-weight: 500; white-space: nowrap; }
+.readout tbody tr.grp th { color: var(--ink-2); font-weight: 400; padding-top: 8px; }
+.readout .ax-x { color: var(--sx); }
+.readout .ax-y { color: var(--sy); }
+.readout .ax-z { color: var(--sz); }
+.readout td[data-tone="ok"] { color: var(--good); }
+.readout td[data-tone="warn"] { color: var(--warn); }
+
 .notes h3 { font-size: var(--fs-s); margin-top: 4px; }
 .notes ul { margin: 0; padding-left: 1.2em; display: grid; gap: 2px; }
 .notes ul ul { margin-top: 2px; }
 .col-table tbody th { font-family: var(--mono); font-size: var(--fs-xs); white-space: nowrap; }
 .col-table td:nth-child(2) { white-space: nowrap; color: var(--ink-2); }
 
-.latest td { font-family: var(--mono); font-size: var(--fs-xs); white-space: nowrap; }
-.latest tbody th { font-family: var(--font); font-size: var(--fs-xs); white-space: nowrap; }
-.small-log { max-height: 220px; padding: 0; }
+.small-log { max-height: 260px; padding: 0; }
 .small-log li { padding: 1px 0; grid-template-columns: 6.2em minmax(0, 1fr); }
 #quality[data-tone="bad"] { color: var(--bad); }
 #quality[data-tone="warn"] { color: var(--warn); }
 #quality[data-tone="ok"] { color: var(--good); }
 
-@media (max-width: 900px) {
-    .collect-grid { grid-template-columns: minmax(0, 1fr); }
-    .chart-group { grid-template-columns: minmax(0, 1fr); }
-    .meta-grid { grid-template-columns: minmax(0, 1fr); }
+/* medium screens: status + 3D on top, charts across the full width below */
+@media (max-width: 1280px) {
+    .monitor { grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.4fr); grid-template-areas: "status rot" "charts charts"; }
 }
 @media (max-width: 900px) {
-    .charts-body { grid-template-columns: minmax(0, 1fr); }
-    .model-mini { position: static; order: -1; max-width: 320px; justify-self: center; width: 100%; }
-    .model-mini .model-stage { aspect-ratio: 4 / 3; }
+    .monitor { grid-template-columns: minmax(0, 1fr); grid-template-areas: "status" "rot" "charts"; }
+    .m-status .sensors { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .chart-group, .chart-group.pair { grid-template-columns: minmax(0, 1fr); }
+    .meta-grid { grid-template-columns: minmax(0, 1fr); }
+    .work { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+    .m-status .sensors { grid-template-columns: minmax(0, 1fr); }
 }

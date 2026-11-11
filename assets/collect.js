@@ -20,11 +20,12 @@
         htare: null, needHeadTare: true, head: null, // zero posture + head angles computed like the firmware
         // per-second counters of new values per sensor (from the flags "updated" bits)
         win: { L: 0, R: 0, C: 0, lines: 0 }, rate: { L: 0, R: 0, C: 0, lines: 0 }, seen: { L: 0, R: 0, C: 0 },
+        skewWin: [], skew: null, // left/right read-time gap (ms) of the lines in the last second -> {mean, max}
         rec: { on: false, rows: [], t0: 0, lostAt0: 0, downloaded: true, startedIso: '', endedIso: '', boot: null, cal: null },
         label: 'free', step: null, ref: null, refs: [], stepLog: [],
         run: null, // {steps, i, start}
     };
-    const series = { L: [], R: [], C: [], LR: [] }; // {t, euler[3], acc[3], gyro[3]} / {t, v}
+    const series = { L: [], R: [], C: [], LR: [], SK: [] }; // {t, euler[3], acc[3], gyro[3]} / {t, v}
 
     /* ---------- log ---------- */
     const logEl = $('log');
@@ -57,7 +58,8 @@
         if (!h) return;
         const first = !st.header;
         st.header = h;
-        if (h.format !== K.FORMAT) log(`เฟิร์มแวร์ส่งรูปแบบ ${h.format} แต่หน้านี้อ่านรูปแบบ ${K.FORMAT} ต้องอัปเดตให้ตรงกัน`, 'bad');
+        if (!K.FORMATS.includes(h.format)) log(`เฟิร์มแวร์ส่งรูปแบบ ${h.format} แต่หน้านี้อ่านได้แค่รูปแบบ ${K.FORMATS.join(', ')} ต้องอัปเดตให้ตรงกัน`, 'bad');
+        else if (first && h.format !== K.FORMAT) log(`เฟิร์มแวร์รุ่นเก่า (รูปแบบ ${h.format}) ยังอ่านได้ แต่ไม่มีอายุค่าของแต่ละเซ็นเซอร์ จึงดูเวลาห่างซ้าย-ขวาไม่ได้ flash รุ่นใหม่เพื่อใช้ส่วนนี้`, 'warn');
         else if (first) log(`เริ่มรับค่าดิบ ${h.rate_hz} Hz (I2C ${h.i2c_hz} Hz)`);
     });
     device.on('collect', (m) => onLine(m.text));
@@ -85,6 +87,7 @@
         for (const k of ['L', 'R']) if (s[k]) series[k].push({ t, euler: s[k].euler, acc: s[k].acc, gyro: s[k].gyro });
         if (s.C) series.C.push({ t, euler: [s.C.tilt[0], s.C.tilt[1], null], acc: s.C.acc, gyro: s.C.gyro });
         if (st.lr !== null) series.LR.push({ t, v: st.lr });
+        if (s.skewMs !== null) { series.SK.push({ t, v: s.skewMs }); st.skewWin.push(s.skewMs); }
         for (const k in series) { const a = series[k]; while (a.length && a[0].t < t - WINDOW_MS) a.shift(); if (a.length && a[a.length - 1].t < t - WINDOW_MS) a.length = 0; }
 
         if (st.rec.on) {
@@ -95,6 +98,9 @@
     setInterval(() => {
         st.rate = Object.assign({}, st.win);
         st.win = { L: 0, R: 0, C: 0, lines: 0 };
+        const sk = st.skewWin;
+        st.skew = sk.length ? { mean: sk.reduce((a, b) => a + b, 0) / sk.length, max: Math.max(...sk) } : null;
+        st.skewWin = [];
     }, 1000);
 
     /* ---------- toolbar ---------- */
@@ -356,30 +362,165 @@
         if (st.rec.rows.length && (!st.rec.downloaded || st.rec.on)) { e.preventDefault(); e.returnValue = ''; }
     });
 
-    /* ---------- 3D model beside the charts: posture from the same head angles the firmware would send ---------- */
-    let model = null;
+    /* ---------- 3D axes of each sensor (replaces the head model) ---------- */
+    const view = { layout: load('layout', 'split'), align: load('align', 'raw') };
+    document.querySelectorAll('input[name="layout"]').forEach((r) => {
+        r.checked = r.value === view.layout;
+        r.addEventListener('change', () => { if (r.checked) { view.layout = r.value; save('layout', r.value); if (axes) axes.setLayout(r.value); } });
+    });
+    document.querySelectorAll('input[name="align"]').forEach((r) => {
+        r.checked = r.value === view.align;
+        r.addEventListener('change', () => { if (r.checked) { view.align = r.value; save('align', r.value); } });
+    });
+    let axes = null;
     if (location.protocol !== 'file:') {
-        import(new URL('assets/neck-model.js', document.baseURI).href)
-            .then((m) => m.createNeckModel($('cModel'), {
-                modelUrl: new URL('assets/models/head/LeePerrySmith.glb', document.baseURI).href,
-                normalUrl: new URL('assets/models/head/Infinite-Level_02_Tangent_SmoothUV.jpg', document.baseURI).href,
-            }))
-            .then((m) => { model = m; model.setMirror(true); model.setView('front'); model.setLive(false); })
-            .catch((e) => { console.error(e); $('mSource').textContent = 'แสดงโมเดลไม่ได้'; });
+        import(new URL('assets/axes-view.js', document.baseURI).href)
+            .then((m) => { axes = m.createAxesView($('cAxes')); axes.setLayout(view.layout); })
+            .catch((e) => { console.error(e); $('rSource').textContent = 'แสดงภาพ 3 มิติไม่ได้'; });
+    } else {
+        $('rSource').textContent = 'เปิดผ่าน http เพื่อดูภาพ 3 มิติ';
     }
-    if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (model) model.refreshTheme(); });
+    $('viewReset').addEventListener('click', () => { if (axes) axes.resetView(); });
+    if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (axes) axes.refreshTheme(); });
 
-    function renderModel(now) {
+    const isFresh = (k, now) => !!st.last && !!st.last[k] && now - st.seen[k] < 1500;
+    /** What the 3D view and the readout show for each sensor: orientation (raw or aligned) and world accel. */
+    function poses(now) {
+        const s = st.last, out = {};
+        const tare = st.tare;
+        const canAlign = !!(tare && tare.L && tare.R);
+        for (const k of ['L', 'R']) {
+            const e = s && s[k];
+            if (!e) { out[k] = null; continue; }
+            let q = K.qNorm(e.q);
+            if (k === 'R' && view.align === 'aligned' && canAlign) q = K.alignTo(e.q, tare.R, tare.L);
+            out[k] = { q, qRaw: K.qNorm(e.q), acc: e.acc, gyro: e.gyro, accWorld: K.worldAcc(e.q, e.acc).world, live: isFresh(k, now) };
+        }
+        const c = s && s.C;
+        out.C = c ? { q: K.gravityQuat(c.acc), acc: c.acc, gyro: c.gyro, accWorld: null, live: isFresh('C', now) } : null;
+        out.canAlign = canAlign;
+        return out;
+    }
+    function frame() {
+        if (axes) {
+            const p = poses(performance.now());
+            const overlay = view.layout === 'overlay';
+            for (const k of ['L', 'R', 'C']) {
+                const v = p[k];
+                axes.setSensor(k, {
+                    q: v ? v.q : null,
+                    accWorld: v ? (v.accWorld || (v.q ? K.qRotate(v.q, v.acc) : null)) : null,
+                    live: !!v && v.live,
+                    visible: !(overlay && k === 'C'),
+                    ghost: overlay && k === 'R',
+                });
+            }
+        }
+        requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    /* readout table under the 3D view, built once */
+    const ROWS = [
+        { g: 'การหมุน' },
+        { k: 'q', t: 'quaternion w x y z' },
+        { k: 'e', t: 'มุมรอบแกนชิป x y z (°)' },
+        { k: 'ax0', t: 'แกน x ชี้ไป', c: 'ax-x' },
+        { k: 'ax1', t: 'แกน y ชี้ไป', c: 'ax-y' },
+        { k: 'ax2', t: 'แกน z ชี้ไป', c: 'ax-z' },
+        { k: 'up', t: 'z โลกตรงแรงโน้มถ่วง' },
+        { g: 'การเคลื่อนที่' },
+        { k: 'a', t: 'accel x y z (m/s²)' },
+        { k: 'an', t: 'ขนาด accel (m/s²)' },
+        { k: 'lin', t: 'ความเร่งเมื่อตัดแรงโน้มถ่วง (m/s²)' },
+        { k: 'g', t: 'gyro x y z (°/s)' },
+        { k: 'gn', t: 'ความเร็วหมุนรวม (°/s)' },
+        { g: 'สัญญาณ' },
+        { k: 'acc', t: 'ความแม่นยำ (0–3)' },
+        { k: 'age', t: 'อายุค่า (ms)' },
+    ];
+    const cells = {};
+    (function buildReadout() {
+        const body = $('readout');
+        for (const r of ROWS) {
+            const tr = document.createElement('tr');
+            const th = document.createElement('th');
+            th.scope = 'row'; th.textContent = r.g || r.t;
+            tr.appendChild(th);
+            if (r.g) { tr.className = 'grp'; th.colSpan = 4; body.appendChild(tr); continue; }
+            if (r.c) th.className = r.c;
+            for (const s of ['L', 'R', 'C']) {
+                const td = document.createElement('td');
+                td.textContent = '–';
+                tr.appendChild(td);
+                cells[`${s}.${r.k}`] = td;
+            }
+            body.appendChild(tr);
+        }
+    })();
+    const elev = (v) => { const d = Math.asin(Math.max(-1, Math.min(1, v[2]))) * 180 / Math.PI; return `${d >= 0 ? '↑' : '↓'}${Math.abs(d).toFixed(0)}°`; };
+    function setCell(id, text, tone) { const td = cells[id]; if (td.textContent !== text) td.textContent = text; if (tone !== undefined) td.dataset.tone = tone; }
+
+    function renderRotation(now) {
+        const p = poses(now);
+        const s = st.last;
+        const anyLive = ['L', 'R', 'C'].some((k) => p[k] && p[k].live);
+        const chip = $('rSource');
+        if (axes || location.protocol === 'file:') {
+            if (axes) {
+                chip.classList.toggle('sim', device.simulated);
+                chip.dataset.state = anyLive ? 'live' : 'idle';
+                chip.textContent = !anyLive ? 'ยังไม่มีค่า' : device.simulated ? 'ข้อมูลจำลอง' : 'จากเซ็นเซอร์';
+            }
+        }
+        $('rotHint').textContent = view.align === 'aligned'
+            ? (p.canAlign ? 'จัดแนวแล้ว: หูขวาถูกหมุนให้เหมือนติดแนวเดียวกับหูซ้าย ณ ท่าตอนตั้งท่าเริ่มต้น ถ้าศีรษะหมุนทั้งชิ้น แกนสองหูจะชี้ทางเดียวกันตลอด ส่วนที่ต่างคือ δ'
+                : 'ยังจัดแนวไม่ได้ ต้องมีค่าจากทั้งสองหู แล้วกด "ตั้งท่าเริ่มต้น" ตอนนี้จึงแสดงตามที่ติดจริง')
+            : 'แสดงตามที่ชิปติดจริง สองหูติดกลับด้านกันจึงชี้คนละทาง ↑/↓ ในตาราง = แกนนั้นชี้เหนือหรือใต้แนวราบกี่องศา';
+
+        for (const k of ['L', 'R']) {
+            const v = p[k], e = s && s[k];
+            if (!v || !e) { ROWS.forEach((r) => r.k && setCell(`${k}.${r.k}`, '–', '')); continue; }
+            setCell(`${k}.q`, vec(v.qRaw, 3));
+            setCell(`${k}.e`, vec(e.euler, 1));
+            K.worldAxes(v.q).forEach((a, i) => setCell(`${k}.ax${i}`, `${K.dirName(a)} ${elev(a)}`));
+            const up = K.worldUpCheck(e.q, e.acc);
+            setCell(`${k}.up`, up === null ? 'กำลังขยับ' : up.toFixed(2), up === null ? '' : up > 0.97 ? 'ok' : 'warn');
+            setCell(`${k}.a`, vec(e.acc, 2));
+            setCell(`${k}.an`, f(Math.hypot(...e.acc), 2));
+            setCell(`${k}.lin`, f(Math.hypot(...K.worldAcc(e.q, e.acc).linear), 2));
+            setCell(`${k}.g`, vec(e.gyro, 1));
+            setCell(`${k}.gn`, f(Math.hypot(...e.gyro), 1));
+            setCell(`${k}.acc`, String(e.accuracy), e.accuracy >= 2 ? 'ok' : 'warn');
+            setCell(`${k}.age`, e.ageMs === null || e.ageMs === undefined ? 'ไม่มี (format 1)' : String(e.ageMs));
+        }
+        const c = s && s.C;
+        if (!c) ROWS.forEach((r) => r.k && setCell(`C.${r.k}`, '–', ''));
+        else {
+            const qg = K.gravityQuat(c.acc);
+            setCell('C.q', 'ไม่มี (MPU)');
+            setCell('C.e', `${f(c.tilt[0], 1)}  ${f(c.tilt[1], 1)}  –`);
+            K.worldAxes(qg).forEach((a, i) => setCell(`C.ax${i}`, `ไม่รู้ทิศหัน ${elev(a)}`));
+            setCell('C.up', 'ใช้ accel แทน');
+            setCell('C.a', vec(c.acc, 2));
+            setCell('C.an', f(Math.hypot(...c.acc), 2));
+            setCell('C.lin', `${f(Math.abs(Math.hypot(...c.acc) - 9.80665), 2)} (ขนาดอย่างเดียว)`);
+            setCell('C.g', vec(c.gyro, 1));
+            setCell('C.gn', f(Math.hypot(...c.gyro), 1));
+            setCell('C.acc', 'ไม่มี');
+            setCell('C.age', c.ageMs === null || c.ageMs === undefined ? 'ไม่มี (format 1)' : String(c.ageMs));
+        }
+
+        // left vs right
+        const L = s && s.L, R = s && s.R;
+        const raw = L && R ? K.relRotation(L.q, R.q) : null;
+        $('cRaw').textContent = raw ? `${raw.angle.toFixed(1)}°` : '–';
+        $('cRawE').textContent = raw ? vec(raw.euler, 1) : '–';
+        const al = L && R && p.canAlign ? K.relRotation(L.q, K.alignTo(R.q, st.tare.R, st.tare.L)) : null;
+        $('cAl').textContent = st.lr === null ? '–' : `${st.lr.toFixed(1)}°`;
+        $('cAlE').textContent = al ? vec(al.euler, 1) : '–';
         const h = st.head;
-        const fresh = !!h && now - Math.max(st.seen.L, st.seen.R) < 1500;
-        const chip = $('mSource');
-        chip.classList.toggle('sim', device.simulated);
-        chip.dataset.state = fresh ? 'live' : 'idle';
-        chip.textContent = !fresh ? 'ยังไม่มีค่า' : device.simulated ? 'ข้อมูลจำลอง' : 'จากเซ็นเซอร์';
-        if (!model) return;
-        model.setLive(fresh);
-        model.setSensors({ left_fresh: fresh && !!h.dL, right_fresh: fresh && !!h.dR });
-        model.setPose(fresh ? { tilt: h.tilt === null ? 0 : h.tilt, pitch: h.pitch, roll: h.roll, yaw: h.yaw } : { tilt: 0, pitch: 0, roll: 0, yaw: 0 });
+        $('cFw').textContent = h ? `${f(h.raw.pitch, 1)} / ${f(h.raw.roll, 1)} / ${f(h.raw.yaw, 1)}` : '–';
     }
 
     /* ---------- charts ---------- */
@@ -424,10 +565,10 @@
         g.fillStyle = colors.ink2; g.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
         g.fillText((hi - pad).toFixed(1), 4, 11); g.fillText((lo + pad).toFixed(1), 4, h - 4);
     }
-    const canvases = [...document.querySelectorAll('.chart-group canvas')].map((c) => ({ c, s: c.closest('.chart-group').dataset.s, k: c.dataset.k }));
+    const canvases = [...document.querySelectorAll('.chart-group canvas')].map((c) => ({ c, s: c.dataset.s || c.closest('.chart-group').dataset.s, k: c.dataset.k }));
     function drawAll() {
         for (const { c, s, k } of canvases) {
-            if (k === 'lr') drawChart(c, series.LR, (p) => p.v, 1);
+            if (k === 'lr' || k === 'skew') drawChart(c, series[s], (p) => p.v, 1);
             else drawChart(c, series[s], (p, i) => p[k][i], 3);
         }
     }
@@ -465,22 +606,16 @@
         else if (st.rate.lines < K.RATE_HZ * 0.9) { msg = `ได้แค่ ${st.rate.lines} บรรทัดต่อวินาที (ควรได้ ${K.RATE_HZ})`; tone = 'warn'; }
         else if (s && ((s.L && s.L.accuracy < 2) || (s.R && s.R.accuracy < 2))) { msg = 'ความแม่นยำของ BNO ต่ำกว่า 2 หมุนศีรษะเป็นเลข 8 สักครู่'; tone = 'warn'; }
         else if (st.lr !== null && st.lr > 10) { msg = `สองหูหมุนต่างกัน ${st.lr.toFixed(1)}° หูฟังอาจหลวม ตรวจแล้วกดตั้งท่าเริ่มต้นใหม่`; tone = 'bad'; }
+        else if (st.skew && st.skew.mean > 10) { msg = `ค่าของสองหูอ่านห่างกันเฉลี่ย ${st.skew.mean.toFixed(0)} ms (ควรไม่เกิน 10) บัส I2C อาจอ่านไม่ทัน`; tone = 'warn'; }
         else if (lostPct > 1) { msg = `บรรทัดหาย ${lostPct.toFixed(1)}% ตรวจสาย USB`; tone = 'warn'; }
         else { msg = 'สัญญาณพร้อมบันทึก'; tone = 'ok'; }
         q.textContent = msg; q.dataset.tone = tone;
 
-        // latest values
-        $('vLe').textContent = s && s.L ? vec(s.L.euler, 1) : '–';
-        $('vRe').textContent = s && s.R ? vec(s.R.euler, 1) : '–';
-        $('vCe').textContent = s && s.C ? `${f(s.C.tilt[0], 1)}  ${f(s.C.tilt[1], 1)}  –` : '–';
-        $('vLq').textContent = s && s.L ? vec(s.L.q, 3) : '–';
-        $('vRq').textContent = s && s.R ? vec(s.R.q, 3) : '–';
-        $('vLa').textContent = s && s.L ? vec(s.L.acc, 2) : '–';
-        $('vRa').textContent = s && s.R ? vec(s.R.acc, 2) : '–';
-        $('vCa').textContent = s && s.C ? vec(s.C.acc, 2) : '–';
-        $('vLg').textContent = s && s.L ? vec(s.L.gyro, 1) : '–';
-        $('vRg').textContent = s && s.R ? vec(s.R.gyro, 1) : '–';
-        $('vCg').textContent = s && s.C ? vec(s.C.gyro, 1) : '–';
+        // left/right sync
+        const oldFmt = st.header && st.header.format !== K.FORMAT;
+        $('kSkew').textContent = st.skew ? `${st.skew.mean.toFixed(1)} / ${st.skew.max} ms` : oldFmt ? 'เฟิร์มแวร์รุ่นเก่า' : '–';
+        const ageOf = (k) => (s && s[k] && Number.isFinite(s[k].ageMs) ? s[k].ageMs : '–');
+        $('kAge').textContent = s ? `${ageOf('L')} / ${ageOf('R')} / ${ageOf('C')} ms` : '–';
 
         // recording panel
         const rows = st.rec.rows.length;
@@ -492,7 +627,7 @@
         $('rSize').textContent = rows ? `${(rows * 300 / 1048576).toFixed(1)} MB` : '–';
 
         drawAll();
-        renderModel(now);
+        renderRotation(now);
     }
     setInterval(render, 100);
 

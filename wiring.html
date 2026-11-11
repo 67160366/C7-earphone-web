@@ -2,14 +2,15 @@
 <html lang="th"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>C7 Headset Wiring</title>
+<title>C7 Headset Add-on</title>
 <script type="importmap">{"imports":{"three":"./assets/vendor/three/three.module.js"}}</script>
 <link rel="stylesheet" href="assets/fonts/fonts.css">
 <style>
-/* Layout: a large 3D bench on the left, a datasheet-style panel on the right; stacks on phones. */
+/* Layout: a large 3D stage on the left, a panel on the right; stacks on phones. */
 :root {
   --bg: #e9eef0; --bench: #f6f8f9; --fg: #142024; --muted: #5a6b71; --line: #cfd9dd;
   --accent: #0a7c86; --accent-soft: #d5ecee; --warn: #b4441f;
+  --ours: #0f9aa5;
   --n-3v3: #d0312d; --n-gnd: #2a2a2e; --n-sda: #1f63d6; --n-scl: #d99a00; --n-5v: #e5731b; --n-mot: #1f9d55;
   --font-body: "IBM Plex Sans Thai", "Leelawadee UI", Tahoma, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", Consolas, ui-monospace, monospace;
@@ -52,6 +53,7 @@ h1 { font-size: 1.5rem; margin: 0; letter-spacing: .01em; text-wrap: balance; }
   padding: 2px 8px; border-radius: 6px; pointer-events: auto; cursor: pointer;
 }
 .tag::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 10px; background: rgba(255,255,255,.5); }
+.tag[data-ours="1"] { border-color: #3cc3cc; }
 .tag[data-on="1"] { background: #0a7c86; border-color: #3cc3cc; }
 .hint { position: absolute; left: 12px; bottom: 10px; right: 12px; font-size: 12px; color: #c4d0d4; pointer-events: none; }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; color: #dfe8ea; font-size: 14px; pointer-events: none; }
@@ -76,46 +78,54 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .slider input { width: 100%; accent-color: var(--accent); }
 .row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; margin-top: 8px; }
 .row label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.seg.cam button { text-align: center; padding: 7px 2px; }
 .nets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 13px; }
 .nets label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+td.route { color: var(--muted); font-size: 12px; }
+.steps { margin: 0; padding-left: 20px; font-size: 13.5px; }
+.steps li { margin: 4px 0; }
+.buy { margin: 0; padding-left: 18px; font-size: 13.5px; }
+.buy li { margin: 6px 0; }
+.buy a { color: var(--accent); }
+.lenbox hr { border: 0; border-top: 1px solid rgba(255,255,255,.16); margin: 6px 0; }
 .btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--bench); cursor: pointer; }
 .btn.ghost { background: transparent; color: var(--accent); }
 .tablewrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
-td.route { color: var(--muted); font-size: 12px; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--line); flex: none; }
 .note { font-size: 12.5px; color: var(--muted); margin: 8px 0 0; }
 .note.warn { color: var(--warn); }
 #info h3 { margin: 0 0 4px; font-size: 1rem; }
 #info p { margin: 4px 0; font-size: 13.5px; }
 #info ul { margin: 6px 0 0; padding-left: 18px; font-size: 13.5px; }
-.cables { display: grid; gap: 8px; }
-.cable { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
-.cable b { display: block; margin-bottom: 4px; }
-.cores { display: flex; flex-wrap: wrap; gap: 4px 10px; }
-.cores span { display: inline-flex; align-items: center; }
 .bom td:last-child { white-space: nowrap; }
 .credit { font-size: 11.5px; color: var(--muted); margin-top: 14px; }
 .credit a { color: var(--accent); }
 </style>
 </head><body>
 <header>
-  <h1>หูฟังครอบหู C7 · แบบจัดสาย</h1>
-  <p class="sub"><a href="dev.html">หน้า dev</a> · หัวสแกนจากคนจริง · BNO085 ติดในครอบหูทั้ง 2 ข้าง · ESP32 ในครอบหูซ้าย · MPU6050 ที่ C7</p>
+  <h1>หูฟังของคุณ + อุปกรณ์เสริม C7</h1>
+  <p class="sub"><a href="dev.html">หน้า dev</a> · แบบร่างข้อเสนอ ยังไม่ได้สร้างจริง · ขนาดเป็นค่าประมาณ</p>
 </header>
 
 <div class="grid">
   <div class="stage" id="stage">
-    <canvas id="c" aria-label="โมเดลหูฟังครอบหูบนศีรษะ และผังต่อขา ลากเพื่อหมุน"></canvas>
+    <canvas id="c" aria-label="โมเดลหูฟังครอบหูของผู้ใช้ ตลับเซ็นเซอร์ข้างหู และโครงพาดบ่าที่มีกล่อง C7 ลากเพื่อหมุน"></canvas>
     <div class="labels" id="labels"></div>
     <div class="loading" id="loading">กำลังโหลดโมเดลศีรษะ…</div>
     <div class="lenbox mono" id="lenbox" aria-live="polite">
-      <b>สายลง C7 (ครอบหูซ้าย → C7)</b>
-      <div class="lenrow"><span>ตอนนี้</span><span id="lenNow">–</span></div>
+      <b>แถบที่ดามนิ้ว (ยาว 45.7 ซม.)</b>
+      <div class="lenrow"><span>กว้าง</span><span id="lenWidth">–</span></div>
+      <div class="lenrow"><span>ใช้จริง</span><span id="lenUsed">–</span></div>
+      <div class="lenrow"><span>ปลาย</span><span id="lenSpare">–</span></div>
+      <hr>
+      <b>สายตลับหู → กล่อง (สาย 50 ซม.)</b>
+      <div class="lenrow"><span>ซ้าย ตอนนี้</span><span id="lenL">–</span></div>
+      <div class="lenrow"><span>ขวา ตอนนี้</span><span id="lenR">–</span></div>
       <div class="lenrow"><span>ยาวสุดที่เจอ</span><span id="lenMax">–</span></div>
-      <div class="lenrow"><span>ควรตัด</span><span id="lenCut">–</span></div>
+      <div class="lenrow"><span>เหลือเผื่อ</span><span id="lenLeft">–</span></div>
     </div>
     <div class="hint" id="hint">ลากเพื่อหมุน · ล้อเมาส์/สองนิ้วเพื่อซูม · แตะชิ้นส่วนเพื่อดูรายละเอียด</div>
   </div>
@@ -124,17 +134,34 @@ td.route { color: var(--muted); font-size: 12px; }
     <div class="card">
       <h2>มุมมอง</h2>
       <div class="seg" style="--cols:3" role="group" aria-label="มุมมอง">
-        <button id="mWear" aria-pressed="true">แบบปกติ<small>ตอนสวมใส่</small></button>
-        <button id="mXray" aria-pressed="false">มองทะลุ<small>อุปกรณ์ข้างใน</small></button>
-        <button id="mPins" aria-pressed="false">ผังต่อขา<small>ESP32 ↔ เซ็นเซอร์</small></button>
+        <button id="mWear" aria-pressed="true">สวมใส่<small>ทุกชิ้นอยู่ในที่</small></button>
+        <button id="mExplode" aria-pressed="false">แยกชิ้น<small>ชิ้นไหนเป็นของเรา</small></button>
+        <button id="mPins" aria-pressed="false">ผังต่อสาย<small>บอร์ดจริง + ขา</small></button>
       </div>
-      <div class="seg" role="group" aria-label="บัส I2C">
-        <button id="busOne" aria-pressed="true">บัสเดียว<small>GPIO21/22 (เฟิร์มแวร์ตอนนี้)</small></button>
-        <button id="busTwo" aria-pressed="false">แยกบัส<small>BNO ขวาไป GPIO18/19</small></button>
+      <div class="seg cam" id="camSeg" style="--cols:5" role="group" aria-label="มุมกล้อง">
+        <button id="vBackQ">เฉียงหลัง</button>
+        <button id="vFront">หน้า</button>
+        <button id="vSide">ข้าง</button>
+        <button id="vBack">หลัง</button>
+        <button id="vTop">บน</button>
       </div>
-      <h2 style="margin-top:12px">เปิด/ปิดสายในผังต่อขา</h2>
-      <div class="nets" id="nets"></div>
-      <div class="row"><label><input type="checkbox" id="pinNames" checked> ชื่อขาทุกขา</label><label><input type="checkbox" id="tags" checked> ป้ายชื่อ</label></div>
+      <div id="wearRow"><div class="row"><label><input type="checkbox" id="person" checked> แสดงตัวคน</label><label><input type="checkbox" id="tags" checked> ป้ายชื่อ</label></div>
+      <p class="note"><span class="dot" style="background:var(--ours)"></span>สีเขียวอมฟ้าและสีขาว = อุปกรณ์เสริมของเรา · <span class="dot" style="background:#25292e"></span>สีเทาเข้ม = หูฟังของผู้ใช้</p></div>
+      <div id="benchRow" hidden>
+        <h2 style="margin-top:4px">เปิด/ปิดสายในผัง</h2>
+        <div class="nets" id="nets"></div>
+        <div class="row"><button class="btn ghost" id="fitAll">ดูทั้งผัง</button><label><input type="checkbox" id="pinNames"> ป้ายชื่อขาทุกขา (ปกติแสดงเฉพาะขาที่ต่อสาย)</label></div>
+      </div>
+    </div>
+
+    <div class="card" id="widthCard">
+      <h2>ความกว้างแถบที่ดามนิ้ว</h2>
+      <div class="seg" style="--cols:3" role="group" aria-label="ความกว้างแถบ">
+        <button id="wHalf" aria-pressed="false">½ นิ้ว<small>12.7 มม.</small></button>
+        <button id="wThree" aria-pressed="true">¾ นิ้ว<small>19 มม.</small></button>
+        <button id="wOne" aria-pressed="false">1 นิ้ว<small>25.4 มม.</small></button>
+      </div>
+      <p class="note">ที่ดามนิ้วรุ่นนี้ขายเป็นแถบยาว 18 นิ้ว มี 3 ความกว้าง ตัดและดัดเองได้</p>
     </div>
 
     <div class="card" id="poseCard">
@@ -146,51 +173,58 @@ td.route { color: var(--muted); font-size: 12px; }
         <button class="btn" id="auto">ขยับอัตโนมัติ</button>
         <button class="btn ghost" id="reset">ท่าตรง</button>
       </div>
-      <p class="note">ค่าบวก: ก้ม, หันซ้าย, หูขวาลง (ตาม SENSOR_AXES.md)</p>
+      <p class="note">ค่าบวก: ก้ม, หันซ้าย, หูขวาลง (ตาม SENSOR_AXES.md) · หูฟังกับตลับขยับตามศีรษะ ส่วนโครงพาดบ่าอยู่กับลำตัว</p>
     </div>
 
-    <div class="card" id="info">
-      <h3>แตะชิ้นส่วนในโมเดล</h3>
-      <p>เลือกครอบหู ก้านคาดหัว สาย หรือกล่อง C7 เพื่อดูว่าข้างในมีอะไรและต่อขาไหน</p>
-    </div>
+    <div class="card" id="info"></div>
 
     <div class="card">
-      <h2>สายที่ออกนอกครอบหู มีแค่ 2 เส้น</h2>
-      <div class="cables" id="cables"></div>
-      <p class="note" id="busNote"></p>
-    </div>
-
-    <div class="card">
-      <h2>ตารางต่อขา</h2>
-      <div class="tablewrap"><table id="pinTable"></table></div>
-      <p class="note">ลำดับขาของ ESP32 ในผังตาม ESP32-DevKitC V4 (38 ขา) ถ้าใช้บอร์ด 30 ขา ตำแหน่งขาต่างกันแต่หมายเลข GPIO เหมือนเดิม ส่วนขาของบอร์ด BNO085 ในผังจัดเรียงให้อ่านง่าย ตำแหน่งจริงให้ดูชื่อขาบนบอร์ด</p>
-    </div>
-
-    <div class="card">
-      <h2>ข้อควรรู้เมื่อใส่เซ็นเซอร์ในครอบหู</h2>
-      <ul class="note" style="padding-left:18px;margin:0">
-        <li>ลำโพงในครอบหูมีแม่เหล็ก ทำให้ค่าทิศ (yaw) ของ BNO085 เพี้ยนได้ เฟิร์มแวร์ตอนนี้ใช้รายงาน ARVR Rotation Vector ซึ่งใช้แม่เหล็ก ถ้าวางเซ็นเซอร์ใกล้ลำโพง ควรเปลี่ยนไปใช้ Game Rotation Vector (ไม่ใช้แม่เหล็ก) หรือวางห่างลำโพงอย่างน้อย 3–4 ซม.</li>
-        <li>หูฟังต้องแนบศีรษะแน่น ถ้าครอบหูเลื่อน ค่ามุมจะไม่ใช่มุมศีรษะ</li>
-        <li>BNO085 2 ตัวมี pull-up 10 kΩ ต่อตัว และ GY-521 มี 4.7 kΩ รวมบนบัสเดียวประมาณ 1.9 kΩ ยังใช้ได้ที่ 3.3 V</li>
-        <li>อย่าเสียบ USB ขณะเปิดสวิตช์แบต เพราะไฟ 5V จากบูสต์กับ USB จะชนกัน</li>
+      <h2>สายที่ต้องซื้อ</h2>
+      <ul class="buy">
+        <li><b>สายตลับหู → กล่อง C7 × 2 เส้น:</b> <a href="https://www.sparkfun.com/products/17257" target="_blank" rel="noopener">SparkFun Flexible Qwiic Cable 500 mm (PRT-17257)</a> สาย 4 เส้นฉนวนอ่อนแบบซิลิโคน หัว JST-SH 1.0 มม. 4 ขาทั้งสองปลาย สีแดง 3V3, ดำ GND, น้ำเงิน SDA, เหลือง SCL เสียบช่อง STEMMA QT ของ BNO085 ได้โดยไม่ต้องบัดกรี ปลายฝั่งกล่องตัดหัวออกแล้วบัดกรี</li>
+        <li><b>ทางเลือก:</b> <a href="https://www.adafruit.com/product/5384" target="_blank" rel="noopener">Adafruit STEMMA QT / Qwiic 300 mm (#5384)</a> หรือรุ่น 400 mm หัวแบบเดียวกัน แต่สั้นกว่า เทียบกับค่า "ยาวสุดที่เจอ" ในโมเดลก่อนซื้อ</li>
+        <li><b>สายในกล่อง:</b> สายไฟอ่อนเส้นเล็ก (ประมาณ 28 AWG) หลายสี สำหรับต่อ GY-521, โมดูลมอเตอร์ และวงจรแบต</li>
       </ul>
+      <p class="note">Adafruit ระบุว่าสาย 300 มม. ถือว่ายาวสำหรับ I2C ถ้าอ่านค่าผิดพลาดให้ลดความเร็วบัสในเฟิร์มแวร์ ยังไม่ได้ทดสอบสาย 50 ซม. 2 เส้นกับบอร์ดจริง</p>
     </div>
 
     <div class="card">
-      <h2>ของที่ใช้ (ขนาดตามที่โมเดลไว้)</h2>
+      <h2>วิธีต่อแบต</h2>
+      <ol class="steps">
+        <li>แบต LiPo 3.7 V: สายแดง → <span class="mono">B+</span>, สายดำ → <span class="mono">B-</span> ของ TP4056</li>
+        <li>TP4056 <span class="mono">OUT+</span> → สวิตช์เลื่อน → <span class="mono">VIN+</span> ของ MT3608</li>
+        <li>TP4056 <span class="mono">OUT-</span> → <span class="mono">VIN-</span> ของ MT3608</li>
+        <li>ยังไม่ต่อ ESP32: เปิดสวิตช์ หมุนตัวปรับของ MT3608 จนวัด <span class="mono">VOUT</span> ได้ 5.0 V</li>
+        <li>MT3608 <span class="mono">VOUT+</span> → ขา <span class="mono">VIN</span>, <span class="mono">VOUT-</span> → ขา <span class="mono">GND</span> ของ ESP32</li>
+        <li>ชาร์จแบตผ่านช่อง USB-C ของ TP4056</li>
+      </ol>
+      <p class="note warn">ห้ามต่อแบตเข้าขา 3V3 หรือ VIN โดยตรง และปิดสวิตช์แบตก่อนเสียบ USB เข้า ESP32</p>
+      <p class="note">เฟิร์มแวร์ตอนนี้ส่งข้อมูลผ่านสาย USB เท่านั้น แบตจึงจ่ายไฟได้ แต่หน้าเว็บยังรับค่าไม่ได้ถ้าไม่เสียบ USB</p>
+    </div>
+
+    <div class="card">
+      <h2>ตารางต่อสาย</h2>
+      <div class="tablewrap"><table id="pinTable"></table></div>
+      <p class="note">ขา 3V3 และ GND ของ ESP32 มีสายหลายเส้น ให้รวมสายที่จุดเดียวก่อนต่อเข้าขา · ตำแหน่งขาในผังตรงกับบอร์ดจริงในรูปที่ใช้อ้างอิง ถ้าบอร์ดที่ซื้อเป็นรุ่นอื่นให้ดูชื่อขาบนบอร์ด</p>
+    </div>
+
+    <div class="card">
+      <h2>ชิ้นส่วนในแบบร่างนี้</h2>
       <div class="tablewrap"><table class="bom">
-        <tr><th>ชิ้นส่วน</th><th>ขนาด</th></tr>
-        <tr><td>ครอบหูแบบปิด (เคสพิมพ์ 3 มิติ) × 2</td><td class="mono">100×84×52 มม.</td></tr>
-        <tr><td>ลำโพง 40 มม. × 2</td><td class="mono">Ø40 มม.</td></tr>
-        <tr><td>Adafruit BNO085 (#4754) × 2</td><td class="mono">25.6×22.7 มม.</td></tr>
-        <tr><td>ESP32-DevKitC (ถอดขา header)</td><td class="mono">54.4×27.9 มม.</td></tr>
-        <tr><td>LiPo 503035 500 mAh</td><td class="mono">35×30×5 มม.</td></tr>
-        <tr><td>TP4056 USB-C (ชาร์จ) + MT3608 (บูสต์ 5V) + สวิตช์</td><td class="mono">26×17 / 36×17 มม.</td></tr>
-        <tr><td>GY-521 MPU6050</td><td class="mono">21×16 มม.</td></tr>
-        <tr><td>มอเตอร์สั่นเหรียญ + ทรานซิสเตอร์ NPN + ไดโอด</td><td class="mono">Ø10×2.7 มม.</td></tr>
-        <tr><td>สายซิลิโคน 5 คอร์ 28AWG (ในก้านคาด + สายลง C7)</td><td class="mono">Ø3.4 มม.</td></tr>
+        <tr><th>ชิ้นส่วน</th><th>ของใคร</th><th>ขนาด</th></tr>
+        <tr><td>หูฟังครอบหู</td><td>ผู้ใช้</td><td class="mono">ฝาครอบ ~100×84 มม.</td></tr>
+        <tr><td>ตลับเซ็นเซอร์ข้างหู × 2</td><td>ของเรา</td><td class="mono">34×30×9 มม.</td></tr>
+        <tr><td>แถบที่ดามนิ้วอะลูมิเนียม × 1</td><td>ของเรา</td><td class="mono">457 มม. × ½–1 นิ้ว</td></tr>
+        <tr><td>Adafruit BNO085 (#4754) × 2</td><td>ของเรา</td><td class="mono">25.6×22.7 มม.</td></tr>
+        <tr><td>ESP32 DevKit V1 30 ขา</td><td>ของเรา</td><td class="mono">~51.5×28.2 มม.</td></tr>
+        <tr><td>GY-521 MPU6050</td><td>ของเรา</td><td class="mono">21×16 มม.</td></tr>
+        <tr><td>LiPo 503035 500 mAh</td><td>ของเรา</td><td class="mono">35×30×5 มม.</td></tr>
+        <tr><td>TP4056 USB-C + MT3608 + สวิตช์</td><td>ของเรา</td><td class="mono">28×17 / 36×17 มม.</td></tr>
+        <tr><td>โมดูลมอเตอร์สั่น</td><td>ของเรา</td><td class="mono">ขึ้นกับรุ่น</td></tr>
+        <tr><td>กล่อง C7</td><td>ของเรา</td><td class="mono">76×50×22 มม.</td></tr>
       </table></div>
-      <p class="credit">หัวสแกน: “Infinite, 3D Head Scan” โดย Lee Perry-Smith, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>, อ้างอิงจาก triplegangers.com ไฟล์จากตัวอย่างของ three.js (ดู assets/vendor/README.md) ส่วนหูฟังและบอร์ดสร้างจากโค้ดตามขนาดในตาราง</p>
+      <p class="note">บอร์ดในมุมมอง "ผังต่อสาย" มีขนาดจริง ส่วนตลับ กล่อง และแถบเป็นขนาดที่เสนอ</p>
+      <p class="credit">หัวสแกน: “Infinite, 3D Head Scan” โดย Lee Perry-Smith, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>, อ้างอิงจาก triplegangers.com ไฟล์จากตัวอย่างของ three.js (ดู assets/vendor/README.md) ส่วนหูฟังและอุปกรณ์เสริมสร้างจากโค้ด</p>
     </div>
   </div>
 </div>

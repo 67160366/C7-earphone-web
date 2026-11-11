@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="assets/collect.css">
     <script type="importmap">{"imports":{"three":"./assets/vendor/three/three.module.js"}}</script>
 </head>
-<body>
+<body class="wide">
     <header class="topbar">
         <div class="wrap">
             <a class="brand" href="./"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 26h22M5 26 18 8" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/><circle cx="18" cy="8" r="3.5" fill="currentColor"/></svg>C7-BioSync <span class="muted dev-tag">เก็บข้อมูล</span></a>
@@ -23,7 +23,7 @@
             <span class="sep" aria-hidden="true"></span>
             <button id="streamOn" class="btn btn-sm" type="button" title="ส่ง r ให้บอร์ดส่งค่าดิบ 50 Hz">เริ่มส่งค่าดิบ <kbd>r</kbd></button>
             <button id="streamOff" class="btn btn-sm" type="button" title="ส่ง n ให้บอร์ดกลับไปส่ง JSON v2">หยุดส่งค่าดิบ <kbd>n</kbd></button>
-            <button id="zero" class="btn btn-sm" type="button" title="ตั้งท่าเริ่มต้นของบอร์ด และตั้งค่าอ้างอิงของ δ ซ้าย-ขวาใหม่">ตั้งท่าเริ่มต้น <kbd>z</kbd></button>
+            <button id="zero" class="btn btn-sm" type="button" title="ตั้งท่าเริ่มต้นของบอร์ด และใช้ท่านี้จัดแนวสองหูให้ตรงกัน">ตั้งท่าเริ่มต้น <kbd>z</kbd></button>
             <span class="sep" aria-hidden="true"></span>
             <button id="record" class="btn btn-sm rec-btn" type="button" aria-pressed="false">เริ่มบันทึก</button>
             <button id="dlCsv" class="btn btn-sm" type="button" disabled>ดาวน์โหลด CSV</button>
@@ -35,27 +35,100 @@
         <div class="wrap"><span class="chip sim">ข้อมูลจำลอง</span> ค่าทั้งหมดในหน้านี้สร้างขึ้นเอง ไม่ได้มาจากเซ็นเซอร์ ไฟล์ที่ดาวน์โหลดจะขึ้นต้นด้วย <code>SIM_</code> และมีคอลัมน์ <code>simulated = 1</code></div>
     </div>
 
-    <main class="wrap collect-grid">
-        <section class="col">
-            <div class="panel block">
-                <h2>สถานะเซ็นเซอร์</h2>
+    <main class="wrap collect-page">
+        <div class="monitor">
+            <section class="panel block m-status" aria-labelledby="hStatus">
+                <h2 id="hStatus">สถานะเซ็นเซอร์</h2>
                 <div class="sensors">
                     <div class="sensor" id="sL"><b>หูซ้าย</b><span class="mono">BNO 0x4A</span><em>–</em><span class="num" id="sLinfo">–</span></div>
                     <div class="sensor" id="sR"><b>หูขวา</b><span class="mono">BNO 0x4B</span><em>–</em><span class="num" id="sRinfo">–</span></div>
                     <div class="sensor" id="sC"><b>ต้นคอ C7</b><span class="mono">MPU 0x68</span><em>–</em><span class="num" id="sCinfo">–</span></div>
                 </div>
+                <p id="quality" class="small" role="status"></p>
+                <h3 class="sub-h">ซิงก์สองหู</h3>
+                <dl class="kv num">
+                    <div><dt>เวลาห่างซ้าย-ขวา (เฉลี่ย / สูงสุดใน 1 วิ)</dt><dd id="kSkew">–</dd></div>
+                    <div><dt>อายุค่า ซ้าย / ขวา / C7</dt><dd id="kAge">–</dd></div>
+                    <div><dt>δ ซ้าย-ขวา หลังจัดแนว</dt><dd id="kLr">–</dd></div>
+                </dl>
+                <h3 class="sub-h">สาย USB</h3>
                 <dl class="kv num">
                     <div><dt>บรรทัดค่าดิบต่อวินาที</dt><dd id="kRate">–</dd></div>
                     <div><dt>บรรทัดที่หาย</dt><dd id="kLost">–</dd></div>
                     <div><dt>บรรทัดที่อ่านไม่ได้</dt><dd id="kBad">–</dd></div>
-                    <div><dt>δ ซ้าย-ขวา</dt><dd id="kLr">–</dd></div>
                     <div><dt>รูปแบบ / I2C</dt><dd id="kHeader">–</dd></div>
                     <div><dt>boot_id / calibration_id</dt><dd id="kBoot">–</dd></div>
                 </dl>
-                <p id="quality" class="small" role="status"></p>
-                <p class="small muted">ความแม่นยำของ BNO085 มี 0–3 ควรได้ 2 ขึ้นไปก่อนเริ่มบันทึก δ ซ้าย-ขวา คือมุมที่สองหูหมุนต่างกันนับจากตอนตั้งท่าเริ่มต้น ถ้าเกิน 10° แปลว่าหูฟังข้างใดข้างหนึ่งหลวมหรือขยับ</p>
-            </div>
+                <p class="small muted">ความแม่นยำของ BNO085 มี 0–3 ควรได้ 2 ขึ้นไปก่อนเริ่มบันทึก เวลาห่างซ้าย-ขวาคือค่าของสองหูในบรรทัดเดียวกันอ่านห่างกันกี่ ms (ควรไม่เกิน 10) δ คือมุมที่สองหูหมุนต่างกันนับจากตอนตั้งท่าเริ่มต้น ถ้าเกิน 10° หูฟังข้างใดข้างหนึ่งหลวมหรือขยับ</p>
+            </section>
 
+            <section class="panel block charts m-charts" aria-labelledby="hCharts">
+                <div class="chart-head">
+                    <h2 id="hCharts">กราฟย้อนหลัง 10 วินาที</h2>
+                    <div class="legend small"><span class="lx">x</span><span class="ly">y</span><span class="lz">z</span></div>
+                </div>
+                <p class="small muted">มุม x/y/z ของหูเป็นมุมตามแกนของชิป ยังไม่ใช่ก้ม/เอียง/หันของศีรษะ (ดู <code>docs/SENSOR_AXES.md</code>) มุมของ MPU คิดจาก accel มีแค่ x/y</p>
+                <div class="chart-group" data-s="L">
+                    <h3>หูซ้าย</h3>
+                    <figure><figcaption>มุม (°)</figcaption><canvas data-k="euler"></canvas></figure>
+                    <figure><figcaption>accel (m/s²)</figcaption><canvas data-k="acc"></canvas></figure>
+                    <figure><figcaption>gyro (°/s)</figcaption><canvas data-k="gyro"></canvas></figure>
+                </div>
+                <div class="chart-group" data-s="R">
+                    <h3>หูขวา</h3>
+                    <figure><figcaption>มุม (°)</figcaption><canvas data-k="euler"></canvas></figure>
+                    <figure><figcaption>accel (m/s²)</figcaption><canvas data-k="acc"></canvas></figure>
+                    <figure><figcaption>gyro (°/s)</figcaption><canvas data-k="gyro"></canvas></figure>
+                </div>
+                <div class="chart-group" data-s="C">
+                    <h3>ต้นคอ C7</h3>
+                    <figure><figcaption>มุมจาก accel (°)</figcaption><canvas data-k="euler"></canvas></figure>
+                    <figure><figcaption>accel (m/s²)</figcaption><canvas data-k="acc"></canvas></figure>
+                    <figure><figcaption>gyro (°/s)</figcaption><canvas data-k="gyro"></canvas></figure>
+                </div>
+                <div class="chart-group pair">
+                    <h3>สองหู</h3>
+                    <figure><figcaption>δ ซ้าย-ขวา หลังจัดแนว (°)</figcaption><canvas data-k="lr" data-s="LR"></canvas></figure>
+                    <figure><figcaption>เวลาห่างซ้าย-ขวา (ms)</figcaption><canvas data-k="skew" data-s="SK"></canvas></figure>
+                </div>
+            </section>
+
+            <section class="panel block m-rot" aria-labelledby="hRot">
+                <div class="chart-head">
+                    <h2 id="hRot">มุมการหมุน 3 มิติ</h2>
+                    <span id="rSource" class="chip">ยังไม่มีค่า</span>
+                </div>
+                <div class="rot-controls">
+                    <div class="segmented" role="radiogroup" aria-label="การวางแกน">
+                        <label><input type="radio" name="layout" value="split" checked><span>แยกกัน</span></label>
+                        <label><input type="radio" name="layout" value="overlay"><span>ซ้อนกัน</span></label>
+                    </div>
+                    <div class="segmented" role="radiogroup" aria-label="การหมุนของหูขวา">
+                        <label><input type="radio" name="align" value="raw" checked><span>ตามที่ติดจริง</span></label>
+                        <label><input type="radio" name="align" value="aligned"><span>จัดแนวให้ตรงกัน</span></label>
+                    </div>
+                    <button id="viewReset" class="btn btn-sm btn-quiet" type="button">มุมกล้องเริ่มต้น</button>
+                </div>
+                <div class="model-stage axes-stage"><canvas id="cAxes" aria-label="แกน x y z ของเซ็นเซอร์ทั้ง 3 ตัวใน 3 มิติ หมุนตามค่าจากเซ็นเซอร์ ลากเพื่อหมุนมุมกล้อง"></canvas></div>
+                <p id="rotHint" class="small muted"></p>
+                <dl class="kv num compare">
+                    <div><dt>ขวาเทียบซ้าย ตามที่ติดจริง</dt><dd id="cRaw">–</dd></div>
+                    <div><dt>ขวาเทียบซ้าย รอบแกนชิปซ้าย x y z</dt><dd id="cRawE">–</dd></div>
+                    <div><dt>หลังจัดแนว ต่างกัน (δ)</dt><dd id="cAl">–</dd></div>
+                    <div><dt>หลังจัดแนว ต่างรอบแกน x y z</dt><dd id="cAlE">–</dd></div>
+                    <div><dt>มุมแบบเฟิร์มแวร์ ก้ม / เอียง / หัน</dt><dd id="cFw">–</dd></div>
+                </dl>
+                <div class="table-scroll">
+                    <table class="readout num">
+                        <thead><tr><th scope="col">ค่า</th><th scope="col">หูซ้าย</th><th scope="col">หูขวา</th><th scope="col">ต้นคอ C7</th></tr></thead>
+                        <tbody id="readout"></tbody>
+                    </table>
+                </div>
+                <p class="small muted">ทิศโลกตามค่าเริ่มต้นของ BNO085: x = ตะวันออก, y = เหนือแม่เหล็ก, z = ขึ้น แถว "z โลกตรงแรงโน้มถ่วง" เช็กข้อนี้จาก accel ตอนนิ่ง (ใกล้ 1.00 = ถูก) ต้นคอ C7 ไม่มี quaternion จึงวาดจากแรงโน้มถ่วงอย่างเดียว รู้แค่ว่าเอียง ไม่รู้ว่าหันไปทางไหน</p>
+            </section>
+        </div>
+
+        <div class="work">
             <div class="panel block">
                 <h2>บันทึก</h2>
                 <div class="now-label" aria-live="polite">
@@ -122,60 +195,10 @@
                 </div>
                 <p class="small muted">ข้อมูลนี้ใช้พัฒนาแบบจำลอง ไม่ใช่การวินิจฉัยทางการแพทย์ ไฟล์อยู่ในเครื่องนี้เท่านั้น ไม่ได้ส่งไปที่ไหน</p>
             </div>
-        </section>
-
-        <section class="col">
-            <div class="panel block charts">
-                <div class="chart-head">
-                    <h2>กราฟย้อนหลัง 10 วินาที</h2>
-                    <div class="legend small"><span class="lx">x</span><span class="ly">y</span><span class="lz">z</span></div>
-                </div>
-                <p class="small muted">มุม x/y/z ของหูเป็นมุมตามแกนของชิป ยังไม่ใช่ก้ม/เอียง/หันของศีรษะ (ดู <code>docs/SENSOR_AXES.md</code>) มุมของ MPU คิดจาก accel มีแค่ x/y</p>
-                <div class="charts-body">
-                <div class="charts-main">
-                <div class="chart-group" data-s="L">
-                    <h3>หูซ้าย</h3>
-                    <figure><figcaption>มุม (°)</figcaption><canvas data-k="euler"></canvas></figure>
-                    <figure><figcaption>accel (m/s²)</figcaption><canvas data-k="acc"></canvas></figure>
-                    <figure><figcaption>gyro (°/s)</figcaption><canvas data-k="gyro"></canvas></figure>
-                </div>
-                <div class="chart-group" data-s="R">
-                    <h3>หูขวา</h3>
-                    <figure><figcaption>มุม (°)</figcaption><canvas data-k="euler"></canvas></figure>
-                    <figure><figcaption>accel (m/s²)</figcaption><canvas data-k="acc"></canvas></figure>
-                    <figure><figcaption>gyro (°/s)</figcaption><canvas data-k="gyro"></canvas></figure>
-                </div>
-                <div class="chart-group" data-s="C">
-                    <h3>ต้นคอ C7</h3>
-                    <figure><figcaption>มุมจาก accel (°)</figcaption><canvas data-k="euler"></canvas></figure>
-                    <figure><figcaption>accel (m/s²)</figcaption><canvas data-k="acc"></canvas></figure>
-                    <figure><figcaption>gyro (°/s)</figcaption><canvas data-k="gyro"></canvas></figure>
-                </div>
-                <div class="chart-group single" data-s="LR">
-                    <h3>δ ซ้าย-ขวา (°)</h3>
-                    <figure><canvas data-k="lr"></canvas></figure>
-                </div>
-                </div>
-                <figure class="model-mini">
-                    <div class="model-stage"><canvas id="cModel" aria-label="โมเดลศีรษะและคอ 3 มิติ ขยับตามท่าจากเซ็นเซอร์"></canvas></div>
-                    <figcaption><span id="mSource" class="chip">ยังไม่มีค่า</span><span class="small muted">ท่าทาง (ตั้งท่าเริ่มต้นก่อนดู)</span></figcaption>
-                </figure>
-                </div>
-            </div>
 
             <div class="panel block">
-                <h2>ค่าล่าสุด</h2>
-                <div class="table-scroll">
-                    <table class="latest num">
-                        <thead><tr><th scope="col">ค่า</th><th scope="col">หูซ้าย</th><th scope="col">หูขวา</th><th scope="col">ต้นคอ C7</th></tr></thead>
-                        <tbody>
-                            <tr><th scope="row">มุม x y z (°)</th><td id="vLe">–</td><td id="vRe">–</td><td id="vCe">–</td></tr>
-                            <tr><th scope="row">quat w x y z</th><td id="vLq">–</td><td id="vRq">–</td><td>ไม่มี</td></tr>
-                            <tr><th scope="row">accel (m/s²)</th><td id="vLa">–</td><td id="vRa">–</td><td id="vCa">–</td></tr>
-                            <tr><th scope="row">gyro (°/s)</th><td id="vLg">–</td><td id="vRg">–</td><td id="vCg">–</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+                <h2>ข้อความจากบอร์ด</h2>
+                <ol id="log" class="log mono small-log" aria-live="off"></ol>
             </div>
 
             <details class="panel block notes" id="notes">
@@ -184,14 +207,23 @@
                 <ul class="small">
                     <li><b>ชิปวัดเอง:</b> accel (m/s²) และ gyro (°/s) ของทั้ง 3 ตัว</li>
                     <li><b>ชิปคำนวณมาให้:</b> quaternion ของหูทั้งสองข้าง BNO085 รวม accel + gyro + เข็มทิศให้ในตัวชิป พร้อมความแม่นยำ 0–3</li>
+                    <li><b>บอร์ดจดเพิ่ม:</b> อายุค่าของแต่ละเซ็นเซอร์ (ms) ใช้ดูว่าสองหูในบรรทัดเดียวกันอ่านห่างกันเท่าไร บอร์ดอ่านสลับซ้าย-ขวาทีละแพ็กเก็ตให้ห่างกันน้อยที่สุด</li>
                     <li><b>หน้าเว็บคำนวณเพิ่ม:</b>
                         <ul>
                             <li>มุม x/y/z ของหู แปลงจาก quaternion เป็นมุมรอบแกนของชิป</li>
                             <li>มุมต้นคอ x/y จาก accel และ z จากการรวม gyro ซึ่งค่าจะค่อย ๆ เพี้ยน</li>
-                            <li>δ ซ้าย-ขวา และมุมศีรษะของโมเดลด้านบน</li>
+                            <li>แกน 3 มิติ ทิศที่แต่ละแกนชี้ ความเร่งเมื่อตัดแรงโน้มถ่วง และมุมระหว่างสองหู</li>
                         </ul>
                     </li>
                     <li>MPU6050 ที่ต้นคอไม่มี quaternion และแรงโน้มถ่วงบอกได้แค่ว่าเอียง แต่บอกไม่ได้ว่าหันไปทางไหน</li>
+                </ul>
+                <h3>อ่านแกน 3 มิติ</h3>
+                <ul class="small">
+                    <li>ลูกศรส้ม = แกน x, เขียว = y, ม่วง = z ของชิปแต่ละตัว แผ่นสี่เหลี่ยมคือตัวชิป ลูกศรสีเข้ม <b>a</b> คือ accel ในทิศโลก ตอนนิ่งต้องชี้ขึ้น</li>
+                    <li><b>ตามที่ติดจริง:</b> แสดงทิศของชิปตามที่ติดบนหูฟัง สองหูติดกลับด้านกันจึงชี้คนละทาง</li>
+                    <li><b>จัดแนวให้ตรงกัน:</b> ใช้ท่าตอนกด "ตั้งท่าเริ่มต้น" ทำให้หูขวาเหมือนติดแนวเดียวกับหูซ้าย ถ้าศีรษะหมุนทั้งชิ้น แกนสองหูจะซ้อนกันสนิทตลอด ส่วนที่ต่างคือ δ</li>
+                    <li><b>ซ้อนกัน:</b> วางแกนทั้งหมดไว้ที่จุดเดียว หูขวาเป็นเส้นจาง ใช้ดูคู่กับ "จัดแนวให้ตรงกัน"</li>
+                    <li>ลากในภาพเพื่อหมุนมุมกล้อง เลื่อนล้อเพื่อซูม</li>
                 </ul>
                 <h3>อ่านกราฟ</h3>
                 <ul class="small">
@@ -220,6 +252,7 @@
                             <tr><th scope="row">C_ ax..gz</th><td>m/s², °/s</td><td>accel และ gyro ของ MPU ที่ต้นคอ</td></tr>
                             <tr><th scope="row">C_ex, C_ey</th><td>°</td><td>เอียงจาก accel: atan2(ay, az), atan2(ax, az) (C_ey = mpu_tilt_raw)</td></tr>
                             <tr><th scope="row">C_ez_gyro</th><td>°</td><td>รวม gyro z ตั้งแต่เริ่มบันทึก ค่าเพี้ยนสะสม อย่าใช้เป็น feature</td></tr>
+                            <tr><th scope="row">L_/R_/C_ age_ms</th><td>ms</td><td>อายุค่าของแต่ละเซ็นเซอร์ในแถวนี้ ว่าง = เฟิร์มแวร์รุ่นเก่า (format 1) หรือเซ็นเซอร์ไม่ส่งค่า</td></tr>
                             <tr><th scope="row">lr_deg</th><td>°</td><td>สองหูหมุนต่างกันเท่าไรนับจากท่าเริ่มต้น</td></tr>
                             <tr><th scope="row">simulated</th><td>0/1</td><td>1 = ข้อมูลจำลอง ห้ามใช้เป็นข้อมูลจริง</td></tr>
                         </tbody>
@@ -227,12 +260,7 @@
                 </div>
                 <p class="small muted">รายละเอียดเต็มและวิธีเก็บที่แนะนำอยู่ใน <code>docs/DATA_COLLECTION.md</code></p>
             </details>
-
-            <div class="panel block">
-                <h2>ข้อความจากบอร์ด</h2>
-                <ol id="log" class="log mono small-log" aria-live="off"></ol>
-            </div>
-        </section>
+        </div>
     </main>
 
     <script src="assets/c7-core.js"></script>

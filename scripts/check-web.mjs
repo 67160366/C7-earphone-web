@@ -465,4 +465,59 @@ await test('collect: simulator streams parseable lines and keeps the device live
     clock += 300; d.tick(); assert.equal(d.state, 'stale');
 });
 
+await test('collect: format 2 ages, skew and format 1 still read', () => {
+    const v2 = (ages) => dLine(5, 63, earInts, earInts, c7Ints) + ',' + ages.join(',');
+    const s = K.parseData(v2([3, 7, 12]));
+    assert.equal(s.L.ageMs, 3); assert.equal(s.R.ageMs, 7); assert.equal(s.C.ageMs, 12); assert.equal(s.skewMs, 4);
+    const old = K.parseData(dLine(5, 63, earInts, earInts, c7Ints));
+    assert.equal(old.L.ageMs, null); assert.equal(old.skewMs, null);
+    const oneEar = K.parseData(dLine(5, 0x01 | 0x08, earInts, null, null) + ',2,,');
+    assert.equal(oneEar.L.ageMs, 2); assert.equal(oneEar.R, null); assert.equal(oneEar.skewMs, null);
+    assert.equal(K.parseData(v2([-1, 0, 0])), null, 'negative age');
+    assert.equal(K.parseData(v2([1, 2])), null, 'wrong field count');
+    assert.ok(K.FORMATS.includes(1) && K.FORMATS.includes(K.FORMAT) && K.FORMAT === 2);
+    const row = K.rowFromSample(s, { tHost: 0, label: 'free', step: null, ref: null, lr: null, cz: null, simulated: false });
+    assert.equal(row.length, K.COLUMNS.length);
+    assert.equal(row[K.COLUMNS.indexOf('R_age_ms')], 7);
+});
+await test('collect: align, relative rotation, world axes and direction names', () => {
+    const mL = K.qMul(K.qAxisAngle([0, 0, 1], 180), K.qAxisAngle([1, 1, 1], 120)), mR = K.qAxisAngle([1, 1, 1], 120);
+    const head = K.qMul(K.qAxisAngle([0, 0, 1], 30), K.qAxisAngle([1, 0, 0], -20));
+    const qL = K.qMul(head, mL), qR = K.qMul(head, mR);
+    // aligned right ear equals left ear on a rigid skull
+    assert.ok(K.qAngleDeg(K.alignTo(qR, mR, mL), qL) < 1e-6);
+    // left vs right as mounted: 180° about world/head z
+    const rel = K.relRotation(qL, qR);
+    assert.ok(Math.abs(rel.angle - 180) < 1e-6, String(rel.angle));
+    const small = K.relRotation([1, 0, 0, 0], K.qAxisAngle([0, 1, 0], 25));
+    assert.ok(Math.abs(small.angle - 25) < 1e-9 && Math.abs(small.axis[1] - 1) < 1e-9 && Math.abs(small.euler[1] - 25) < 1e-9);
+    // right chip at zero: x forward (north), y up, z right (east)
+    const ax = K.worldAxes(mR);
+    eq(ax.map((v) => v.map((c) => Math.round(c * 1e6) / 1e6 + 0)), [[0, 1, 0], [0, 0, 1], [1, 0, 0]]);
+    assert.equal(K.dirName([0, 1, 0]), 'เหนือ'); assert.equal(K.dirName([0, 0, -1]), 'ลง');
+    assert.equal(K.dirName([0.7, 0, 0.7]), 'ตะวันออก-ขึ้น'); assert.equal(K.dirName([-1, 0.2, 0]), 'ตะวันตก');
+    // gravity: accel turned to the world points up; the MPU-from-gravity quaternion takes accel to +z
+    const acc = K.qRotate(K.qConj(qR), [0, 0, 9.80665]);
+    assert.ok(Math.abs(K.worldUpCheck(qR, acc) - 1) < 1e-9);
+    assert.ok(Math.hypot(...K.worldAcc(qR, acc).linear) < 1e-9);
+    assert.equal(K.worldUpCheck(qR, [0, 0, 30]), null, 'moving: no check');
+    for (const a of [[0, 0, 9.8], [9.8, 0, 0], [3, -4, 5], [0, 0, -9.8]]) {
+        const up = K.qRotate(K.gravityQuat(a), a), n = Math.hypot(...a);
+        assert.ok(Math.abs(up[2] / n - 1) < 1e-9, `gravityQuat ${a}`);
+    }
+});
+await test('collect: simulator world is ENU (accel turned by q points up, ears mirrored)', () => {
+    let t = 1000;
+    const sim = new K.CollectSimulator({ now: () => t });
+    const lines = [];
+    sim.start((l) => lines.push(l)); sim.command('r');
+    for (let i = 0; i < 300; i++) { t += 20; sim.emitData(); }
+    sim.stop();
+    const data = lines.filter((l) => l.startsWith('D,')).map(K.parseData);
+    assert.ok(data.every((s) => s && Number.isInteger(s.L.ageMs) && s.skewMs !== null));
+    data.forEach((s) => assert.ok(K.worldUpCheck(s.L.q, s.L.acc) > 0.98 && K.worldUpCheck(s.R.q, s.R.acc) > 0.98, 'up check'));
+    const rel = K.relRotation(data[0].L.q, data[0].R.q);
+    assert.ok(rel.angle > 170, `ears are mirrored, ${rel.angle}`);
+});
+
 console.log(`\n${passed} checks passed`);

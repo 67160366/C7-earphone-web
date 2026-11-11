@@ -4,8 +4,12 @@
  * turns them into SI-ish units, builds CSV rows and runs a labelled simulator.
  * Line formats and units: docs/DATA_COLLECTION.md.
  *
- *   H,format=1,boot_id=..,calibration_id=..,rate_hz=50,...      header (key=value)
- *   D,seq,t_ms,flags, L(qw qx qy qz ax ay az gx gy gz acc), R(same), C7(ax ay az gx gy gz)
+ *   H,format=2,boot_id=..,calibration_id=..,rate_hz=50,...      header (key=value)
+ *   D,seq,t_ms,flags, L(qw qx qy qz ax ay az gx gy gz acc), R(same), C7(ax ay az gx gy gz), L_age,R_age,C7_age
+ *   (format 1 = the same line without the 3 ages; still accepted, ages become null)
+ *
+ * World frame of the BNO085 rotation vector: SH-2 default is ENU (x east, y magnetic north, z up).
+ * worldUpCheck() compares that assumption with the accelerometer so pages can show whether it holds.
  *
  * Angles x/y/z of the ear sensors are Euler angles in the chip's own axes (same formula as
  * quaternionToEulerDeg() in the firmware). They are NOT head pitch/roll/yaw: the axis mapping
@@ -16,12 +20,14 @@
     const C7 = root.C7;
     if (!C7) throw new Error('load c7-core.js before c7-collect.js');
 
-    const FORMAT = 1;
+    const FORMAT = 2;
+    const FORMATS = Object.freeze([1, 2]); // formats this page can read
     const RATE_HZ = 50;
     const G = 9.80665;
     const DEG = Math.PI / 180;
-    const EAR_FIELDS = 11, C7_FIELDS = 6;
-    const D_FIELDS = 1 + 3 + EAR_FIELDS * 2 + C7_FIELDS; // 'D' + seq,t,flags + L + R + C7 = 32
+    const EAR_FIELDS = 11, C7_FIELDS = 6, AGE_FIELDS = 3;
+    const D_FIELDS_V1 = 1 + 3 + EAR_FIELDS * 2 + C7_FIELDS; // 'D' + seq,t,flags + L + R + C7 = 32
+    const D_FIELDS = D_FIELDS_V1 + AGE_FIELDS;              // + L/R/C7 age (ms) = 35
     // Raw integer -> unit. BNO085 (SH-2): quaternion Q14, accel Q8 m/s², calibrated gyro Q9 rad/s.
     // MPU6050 at ±2 g / ±250 °/s: 16384 LSB/g, 131 LSB/(°/s).
     const SCALE = Object.freeze({
@@ -82,6 +88,57 @@
         return qAngleDeg(qNorm(qL), qNorm(qR));
     }
 
+    /* ---------- orientation views for the 3D axes panel (world = ENU, see top of file) ---------- */
+    /**
+     * "As if this sensor were mounted like the reference one": its change since its own tare,
+     * applied to the reference sensor's tare orientation. On a rigid skull alignTo(qR, tareR, tareL) == qL,
+     * so whatever is left between the two is slip or one ear moving on its own.
+     */
+    function alignTo(q, tareSelf, tareRef) {
+        if (!q || !tareSelf || !tareRef) return null;
+        return qNorm(qMul(qMul(qNorm(q), qConj(qNorm(tareSelf))), qNorm(tareRef)));
+    }
+    /** Rotation of b seen from a's own axes (a⁻¹·b): angle (deg, 0..180), unit axis in a's axes and chip-style Euler. */
+    function relRotation(a, b) {
+        if (!a || !b) return null;
+        let r = qNorm(qMul(qConj(qNorm(a)), qNorm(b)));
+        if (r[0] < 0) r = r.map((v) => -v);
+        const s = Math.hypot(r[1], r[2], r[3]);
+        return { q: r, angle: 2 * Math.atan2(s, r[0]) / DEG, axis: s > 1e-9 ? [r[1] / s, r[2] / s, r[3] / s] : [0, 0, 0], euler: chipEulerDeg(r) };
+    }
+    /** World directions of the chip's x, y and z axes (columns of the rotation matrix). */
+    function worldAxes(q) { const n = qNorm(q); return [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((v) => qRotate(n, v)); }
+    /** Accel turned into the world frame, and what is left after taking out gravity (+g on world z at rest). */
+    function worldAcc(q, acc) {
+        const w = qRotate(qNorm(q), acc);
+        return { world: w, linear: [w[0], w[1], w[2] - G] };
+    }
+    /** Cosine between q·acc and world +z (1 = "z is up" holds). null while |acc| is far from g (sensor moving). */
+    function worldUpCheck(q, acc) {
+        const n = Math.hypot(acc[0], acc[1], acc[2]);
+        if (!(n > 0.8 * G && n < 1.2 * G)) return null;
+        return qRotate(qNorm(q), acc)[2] / n;
+    }
+    /**
+     * Orientation of the MPU from gravity alone: the smallest rotation taking its accel direction to world up.
+     * Heading is unknown (an accelerometer cannot see it), so the result never turns about the vertical.
+     */
+    function gravityQuat(acc) {
+        const n = Math.hypot(acc[0], acc[1], acc[2]);
+        if (!(n > 0)) return null;
+        const u = acc.map((v) => v / n);
+        if (1 + u[2] < 1e-6) return [0, 1, 0, 0]; // upside down: any horizontal axis works
+        return qNorm([1 + u[2], u[1], -u[0], 0]);  // [1 + u·z, u × z]
+    }
+    const DIR_NAMES = [['ตะวันออก', 'ตะวันตก'], ['เหนือ', 'ใต้'], ['ขึ้น', 'ลง']];
+    /** Thai name of a world (ENU) direction: the main component, plus a second one when it is large. */
+    function dirName(v) {
+        const n = Math.hypot(v[0], v[1], v[2]) || 1;
+        const parts = v.map((c, i) => ({ i, c: c / n })).sort((a, b) => Math.abs(b.c) - Math.abs(a.c));
+        const name = (p) => DIR_NAMES[p.i][p.c >= 0 ? 0 : 1];
+        return Math.abs(parts[1].c) >= 0.38 ? `${name(parts[0])}-${name(parts[1])}` : name(parts[0]);
+    }
+
     const wrap180 = (d) => { let v = d % 360; if (v > 180) v -= 360; if (v < -180) v += 360; return v; };
     const clamp = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
     /** Snapshot of the zero posture, taken by the page at "ตั้งท่าเริ่มต้น" (same moment the firmware tares). */
@@ -133,12 +190,21 @@
     }
 
     const toInt = (s) => (/^-?\d+$/.test(s) ? Number(s) : NaN);
-    /** Returns {seq, tDev, flags, L, R, C} (missing sensor = null) or null when the line is malformed. */
+    /**
+     * Returns {seq, tDev, flags, L, R, C, skewMs} (missing sensor = null) or null when the line is malformed.
+     * Format 2 adds each sensor's age (ms between the ESP32 reading it and t_ms) as .ageMs; format 1 gives null.
+     * skewMs = how far apart in time the two ears in this line were read (null when unknown).
+     */
     function parseData(text) {
         const f = String(text).trim().split(',');
-        if (f[0] !== 'D' || f.length !== D_FIELDS) return null;
+        if (f[0] !== 'D' || (f.length !== D_FIELDS && f.length !== D_FIELDS_V1)) return null;
         const seq = toInt(f[1]), tDev = toInt(f[2]), flags = toInt(f[3]);
         if (![seq, tDev, flags].every(Number.isFinite)) return null;
+        let ages = [null, null, null];
+        if (f.length === D_FIELDS) {
+            ages = f.slice(D_FIELDS_V1).map((v) => (v === '' ? null : toInt(v)));
+            if (ages.some((v) => v !== null && !(v >= 0))) return null;
+        }
         const block = (start, n) => {
             const vals = f.slice(start, start + n);
             if (vals.every((v) => v === '')) return { empty: true };
@@ -165,10 +231,11 @@
             const v = cb.ints;
             C = { acc: [v[0], v[1], v[2]].map((x) => x * SCALE.mpuAcc), gyro: [v[3], v[4], v[5]].map((x) => x * SCALE.mpuGyro), updated: !!(flags & FLAG.C_NEW), raw: v };
         }
-        if (L) L.euler = chipEulerDeg(L.q);
-        if (R) R.euler = chipEulerDeg(R.q);
-        if (C) C.tilt = accTiltDeg(C.acc);
-        return { seq, tDev, flags, L, R, C };
+        if (L) { L.euler = chipEulerDeg(L.q); L.ageMs = ages[0]; }
+        if (R) { R.euler = chipEulerDeg(R.q); R.ageMs = ages[1]; }
+        if (C) { C.tilt = accTiltDeg(C.acc); C.ageMs = ages[2]; }
+        const skewMs = L && R && L.ageMs !== null && R.ageMs !== null ? Math.abs(L.ageMs - R.ageMs) : null;
+        return { seq, tDev, flags, L, R, C, skewMs };
     }
 
     /** Integrates the MPU z gyro into a heading that drifts; reset at every recording start. */
@@ -191,6 +258,7 @@
         't_host_ms', 'seq', 't_dev_ms', 'flags', 'label', 'step', 'ref_angle_deg',
         ...EAR_COLS.map((c) => `L_${c}`), ...EAR_COLS.map((c) => `R_${c}`),
         'C_ax', 'C_ay', 'C_az', 'C_gx', 'C_gy', 'C_gz', 'C_ex', 'C_ey', 'C_ez_gyro',
+        'L_age_ms', 'R_age_ms', 'C_age_ms',
         'lr_deg', 'simulated',
     ]);
     const round = (v, d) => (Number.isFinite(v) ? Number(v.toFixed(d)) : null);
@@ -200,7 +268,9 @@
         const c = s.C ? [...s.C.acc.map((v) => round(v, 4)), ...s.C.gyro.map((v) => round(v, 3)), ...s.C.tilt.map((v) => round(v, 3)), round(ctx.cz, 3)] : new Array(9).fill(null);
         return [
             Math.round(ctx.tHost), s.seq, s.tDev, s.flags, ctx.label || '', ctx.step === null || ctx.step === undefined ? null : ctx.step,
-            round(ctx.ref, 2), ...ear(s.L), ...ear(s.R), ...c, round(ctx.lr, 3), ctx.simulated ? 1 : 0,
+            round(ctx.ref, 2), ...ear(s.L), ...ear(s.R), ...c,
+            ...[s.L, s.R, s.C].map((e) => (e && Number.isFinite(e.ageMs) ? e.ageMs : null)),
+            round(ctx.lr, 3), ctx.simulated ? 1 : 0,
         ];
     }
     function csvCell(v) {
@@ -276,10 +346,13 @@
             super(Object.assign({ script: 'demo' }, opts));
             this.streaming = false; this.seq = 0; this.dataTimer = null; this.jsonTick = 0;
             this.prev = { L: null, R: null, tilt: null, t: null };
-            // Each ear board sits on the side of the head, turned differently (+ a few degrees of mounting error).
+            // Each ear board sits on the side of the head, mirrored like real earphones (+ a few degrees of mounting error).
+            // Head frame: x = right, y = forward, z = up. Right chip: x forward, y up, z out to the right.
+            // Left chip: x backward, y up, z out to the left.
+            const right = qAxisAngle([1, 1, 1], 120);
             this.mount = {
-                L: qMul(qAxisAngle([0, 0, 1], 90), qAxisAngle([1, 0, 0], 4)),
-                R: qMul(qMul(qAxisAngle([0, 0, 1], -90), qAxisAngle([0, 1, 0], 180)), qAxisAngle([0, 1, 0], -3)),
+                L: qMul(qMul(qAxisAngle([0, 0, 1], 180), right), qAxisAngle([1, 0, 0], 4)),
+                R: qMul(right, qAxisAngle([0, 1, 0], -3)),
             };
         }
         start(out) {
@@ -309,12 +382,15 @@
                 this.streaming = false;
             } else super.command(text);
         }
-        /** Head orientation in a y-up, z-forward world: yaw about y, pitch about x, roll about z. */
-        headQuat(p) { return qMul(qMul(qAxisAngle([0, 1, 0], p.yaw), qAxisAngle([1, 0, 0], p.pitch)), qAxisAngle([0, 0, 1], -p.roll)); }
+        /**
+         * Head orientation in the BNO world (ENU, facing north at zero): yaw about z (+ = turn left),
+         * pitch about x (+ = chin down, so -pitch), roll about the forward y axis (+ = right ear down).
+         */
+        headQuat(p) { return qMul(qMul(qAxisAngle([0, 0, 1], p.yaw), qAxisAngle([1, 0, 0], -p.pitch)), qAxisAngle([0, 1, 0], p.roll)); }
         /** One ear: quaternion, specific force (gravity reaction) and body-rate gyro, as raw firmware integers. */
         earRaw(side, head, dt) {
             const q = qMul(head, this.mount[side]);
-            const acc = qRotate(qConj(q), [0, G, 0]).map((v) => v + noise(0.04));
+            const acc = qRotate(qConj(q), [0, 0, G]).map((v) => v + noise(0.04));
             let gyro = [0, 0, 0];
             const prev = this.prev[side];
             if (prev && dt > 0) {
@@ -342,13 +418,16 @@
                 .concat([noise(0.3), gyroY + noise(0.3), noise(0.3)].map((v) => r16(v * 131)));
             const seq = this.seq; this.seq = (this.seq + 1) & 0xFFFF;
             if (Math.random() < 0.002) return; // a rare lost line, so the page's gap counter is exercised
-            this.out(['D', seq, Math.round(t), 0x3F, ...L, ...R, ...C].join(','));
+            // ages like the interleaved firmware poll: ears a few ms apart, MPU read every 20 ms
+            const ages = [Math.floor(Math.random() * 6), Math.floor(Math.random() * 6), Math.floor(Math.random() * 20)];
+            this.out(['D', seq, Math.round(t), 0x3F, ...L, ...R, ...C, ...ages].join(','));
         }
     }
 
     C7.Collect = {
-        FORMAT, RATE_HZ, SCALE, FLAG, COLUMNS, LABELS, DEFAULT_PROTOCOL,
+        FORMAT, FORMATS, RATE_HZ, SCALE, FLAG, COLUMNS, LABELS, DEFAULT_PROTOCOL,
         parseHeader, parseData, chipEulerDeg, accTiltDeg, lrDeg, seqGap, headTare, firmwareHead, qMul, qConj, qNorm, qAxisAngle, qRotate, qAngleDeg,
+        alignTo, relRotation, worldAxes, worldAcc, worldUpCheck, gravityQuat, dirName,
         rowFromSample, csvCell, csvChunks, parseProtocol, withTransitions, shuffleMiddle, Integrator, CollectSimulator,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

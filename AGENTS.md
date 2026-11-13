@@ -61,7 +61,7 @@
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1          # เปิดหน้าเว็บที่ http://127.0.0.1:8090/
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1 -Stop    # ปิด server
-node scripts/check-web.mjs                                                       # เทสต์ c7-core.js + c7-collect.js (ตอนนี้ 34 ข้อ)
+node scripts/check-web.mjs                                                       # เทสต์ c7-core.js + c7-collect.js + structure-layout.js (ตอนนี้ 37 ข้อ)
 git diff --check
 ```
 ต้องมี PHP 8 ขึ้นไปสำหรับ server, Node 18 ขึ้นไปสำหรับเทสต์ และ Chrome หรือ Edge สำหรับ Web Serial
@@ -85,8 +85,10 @@ git diff --check
 | `collect.html`, `assets/collect.js`, `assets/collect.css` | หน้าเก็บข้อมูลดิบ 50 Hz: สถานะ + กราฟ + มุมการหมุน 3 มิติในจอเดียว, ขั้นตอนท่า, ดาวน์โหลด CSV/JSON |
 | `assets/axes-view.js` | แกน x/y/z 3 มิติของเซ็นเซอร์แต่ละตัวในทิศโลก ENU สำหรับหน้า collect (ES module, ต้องเปิดผ่าน http) |
 | `wiring.html`, `assets/wiring.js` | แบบร่าง 3 มิติ: หูฟังครอบหูของผู้ใช้ + ตลับเซ็นเซอร์ข้างหู + โครงพาดบ่าและกล่อง C7 + ผังต่อสายและวงจรแบต (ข้อเสนอ ไม่ต่อ USB) |
+| `structure.html`, `assets/structure.js` | โครงสร้างในกล่อง C7, ตลับข้างหู และกล่องข้อต่อกลางสาย: ตำแหน่ง ที่ยึด ทางเดินสาย ภาพแยกชิ้น (ข้อเสนอ ไม่ต่อ USB) |
+| `assets/structure-layout.js` | แหล่งความจริงของขนาดกล่อง ตำแหน่งบอร์ด ที่ยึด และสายในกล่อง หน่วยเป็นมิลลิเมตร ไม่แตะ DOM ใช้ทั้งหน้า structure, หน้า wiring (`fillBox()`) และเทสต์ ถ้าเปลี่ยนขนาดกล่องต้องแก้ `DIM.box` / `DIM.pod` ใน `wiring-models.js` ให้ตรง |
 | `assets/wiring-models.js` | ตัวสร้างโมเดลของหน้า wiring (หูฟัง, ตลับ, โครง C7) ไม่แตะ DOM หน่วยเป็นเซนติเมตร ขนาดอยู่ใน `DIM` |
-| `assets/wiring-boards.js` | โมเดลบอร์ดขนาดจริงของหน้า wiring (silkscreen วาดด้วย canvas, ตำแหน่งขาทุกขา) ถ้าเปลี่ยนขาที่ใช้ต้องตรงกับ `I2C0_SDA_PIN` / `I2C0_SCL_PIN` / `HAPTIC_MOTOR_PIN` ในเฟิร์มแวร์ |
+| `assets/wiring-boards.js` | โมเดลบอร์ดขนาดจริงของหน้า wiring (silkscreen วาดด้วย canvas, ตำแหน่งขาทุกขา) ถ้าเปลี่ยนขาที่ใช้ต้องตรงกับ `I2C0_SDA_PIN` / `I2C0_SCL_PIN` ในเฟิร์มแวร์ (หน้า wiring ไม่มีมอเตอร์สั่นแล้ว แต่เฟิร์มแวร์ยังมี `HAPTIC_MOTOR_PIN`) |
 | `assets/c7-collect.js` | อ่านบรรทัด `H`/`D` ของโหมดเก็บข้อมูล, quaternion, CSV, ข้อมูลจำลอง (ดู `docs/DATA_COLLECTION.md`) |
 | `assets/c7-core.js` | สูตร CVA, ตรวจ Protocol v2 (รับ v1), เชื่อม USB, ข้อมูลจำลอง |
 | `assets/dev-formula.js` | แผงสูตร CVA ทีละขั้นในหน้า dev (SVG + โมเดล 3 มิติ) |

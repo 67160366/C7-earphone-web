@@ -71,7 +71,8 @@ function texture(canvas) {
   const t = new THREE.CanvasTexture(canvas); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
 
-// One board. def: { w, h, r, base, thick, draw(p), parts(add), pins: [{ k, x, y, hdr }] }
+// One board. def: { w, h, r, base, thick, bare, draw(p), parts(add), pins: [{ k, x, y, hdr }] }
+// bare = no pin headers soldered on (boards shown inside the pods and the C7 box).
 function board(def) {
   const g = new THREE.Group(), th = def.thick ?? T, top = th / 2;
   const shape = roundRect(def.w, def.h, def.r ?? 0.12);
@@ -95,7 +96,7 @@ function board(def) {
   def.parts?.(add, top);
   const pins = {};
   for (const pin of def.pins) {
-    if (pin.hdr !== false) {
+    if (pin.hdr !== false && !def.bare) {
       // soldered header: solder dome on top, plastic strip and gold pin below
       const d = new THREE.Mesh(G.dome, M.solder); d.position.set(pin.x, pin.y, top); d.scale.z = 0.8; g.add(d);
       const s = new THREE.Mesh(G.strip, M.plastic); s.position.set(pin.x, pin.y, -th / 2 - 0.125); g.add(s);
@@ -108,11 +109,12 @@ function board(def) {
 const cyl = (r, h, seg = 20) => new THREE.CylinderGeometry(r, r, h, seg).rotateX(Math.PI / 2);
 
 // ---------- Adafruit BNO085 breakout (#4754), 25.6 x 22.7 mm, two STEMMA QT sockets ----------
-export function bno085() {
+export function bno085(o = {}) {
   const top = ['BT', 'P0', 'P1', 'RST', 'DI', 'CS'], bot = ['VIN', '3Vo', 'GND', 'SCL', 'SDA', 'INT'];
   const x = (i) => -0.635 + i * PITCH;
   const qt = (side, sx) => ['GND', '3V3', 'SDA', 'SCL'].map((n, i) => ({ k: side + '.' + n, n, x: sx * 1.33, y: 0.15 - i * 0.1, z: 0.16, hdr: false, lx: sx * 0.5, ly: (1.5 - i) * 0.17 }));
   return board({
+    bare: o.bare,
     w: 2.56, h: 2.27, r: 0.22, base: '#15171a',
     pins: [
       ...top.map((n, i) => ({ k: n, x: x(i), y: 0.89, ly: 0.4 + (i % 2) * 0.24 })),
@@ -139,7 +141,7 @@ export function bno085() {
 }
 
 // ---------- ESP32 DevKit V1 (DOIT, 30 pins, ESP32-WROOM-32, micro-USB), about 51.5 x 28.2 mm ----------
-export function esp32() {
+export function esp32(o = {}) {
   const L = ['EN', 'VP', 'VN', 'D34', 'D35', 'D32', 'D33', 'D25', 'D26', 'D27', 'D14', 'D12', 'D13', 'GND', 'VIN'];
   const R = ['D23', 'D22', 'TX0', 'RX0', 'D21', 'D19', 'D18', 'D5', 'TX2', 'RX2', 'D4', 'D2', 'D15', 'GND', '3V3'];
   const y = (i) => 1.62 - i * PITCH;
@@ -148,6 +150,7 @@ export function esp32() {
   canTop.text('CE  FCC', -0.2, 0.25, 0.1, { color: '#5f666b', weight: 600 });
   canTop.rect(0.45, -0.4, 0.4, 0.4, '#8a9196', 0.02); canTop.rect(0.45, -0.4, 0.2, 0.2, '#8a9196');
   return board({
+    bare: o.bare,
     w: 2.82, h: 5.15, r: 0.1, base: '#0f1113',
     pins: [
       ...L.map((n, i) => ({ k: n === 'GND' ? 'GNDL' : n, n, x: -1.27, y: y(i), lx: -0.42 })),
@@ -176,9 +179,10 @@ export function esp32() {
 }
 
 // ---------- GY-521 (MPU6050), 21 x 16 mm, one row of 8 pins ----------
-export function gy521() {
+export function gy521(o = {}) {
   const names = ['VCC', 'GND', 'SCL', 'SDA', 'XDA', 'XCL', 'AD0', 'INT'], x = (i) => -0.889 + i * PITCH;
   return board({
+    bare: o.bare,
     w: 2.1, h: 1.6, r: 0.08, base: '#1b55a6',
     pins: names.map((n, i) => ({ k: n, x: x(i), y: 0.6, ly: 0.4 + (i % 2) * 0.24 })),
     draw(p) {
@@ -195,9 +199,10 @@ export function gy521() {
 }
 
 // ---------- TP4056 USB-C charger with protection (DW01 + 8205), about 28 x 17 mm ----------
-export function tp4056() {
+export function tp4056(o = {}) {
   const pads = [['OUT+', 0.62], ['B+', 0.22], ['B-', -0.22], ['OUT-', -0.62]];
   return board({
+    bare: o.bare,
     w: 2.8, h: 1.7, r: 0.06, base: '#1b55a6',
     pins: pads.map(([n, py]) => ({ k: n, x: 1.2, y: py, hdr: false, z: 0.01, lx: 0.5 })),
     draw(p) {
@@ -213,9 +218,10 @@ export function tp4056() {
 }
 
 // ---------- MT3608 step-up module (set to 5.0 V with the trimmer), about 36 x 17 mm ----------
-export function mt3608() {
+export function mt3608(o = {}) {
   const pads = [['VIN+', -1.6, 0.6], ['VIN-', -1.6, -0.6], ['VOUT+', 1.6, 0.6], ['VOUT-', 1.6, -0.6]];
   return board({
+    bare: o.bare,
     w: 3.6, h: 1.7, r: 0.06, base: '#1b55a6',
     pins: pads.map(([n, px, py]) => ({ k: n, x: px, y: py, hdr: false, z: 0.01, lx: Math.sign(px) * 0.52 })),
     draw(p) {
@@ -231,8 +237,9 @@ export function mt3608() {
 }
 
 // ---------- LiPo 503035, 3.7 V 500 mAh, 35 x 30 x 5 mm, with its protection board under the tape ----------
-export function lipo() {
+export function lipo(o = {}) {
   return board({
+    bare: o.bare,
     w: 3.0, h: 3.5, r: 0.14, base: '#b4b9bd', thick: 0.5, metal: 0.8,
     pins: [{ k: '+', x: 0.3, y: 1.58, hdr: false, z: 0.01, ly: 0.36, lx: 0.25 }, { k: '-', x: -0.3, y: 1.58, hdr: false, z: 0.01, ly: 0.36, lx: -0.25 }],
     draw(p) {
@@ -247,8 +254,9 @@ export function lipo() {
 }
 
 // ---------- SS12D00 slide switch: battery on/off ----------
-export function slideSwitch() {
+export function slideSwitch(o = {}) {
   return board({
+    bare: o.bare,
     w: 1.3, h: 0.9, r: 0.05, base: '#2a2d31',
     pins: [{ k: 'A', x: -0.3, y: -0.3, hdr: false, z: 0.01, ly: -0.36, lx: -0.2 }, { k: 'B', x: 0, y: -0.3, hdr: false, z: 0.01, ly: -0.36, lx: 0.2 }],
     draw(p) {
@@ -259,16 +267,19 @@ export function slideSwitch() {
   });
 }
 
-// ---------- vibration-motor module (coin motor + transistor on a small PCB); size varies by seller ----------
-export function motorModule() {
-  const names = ['GND', 'VCC', 'IN'];
+// ---------- SparkFun Qwiic Adapter: two Qwiic sockets + 4 plated holes, all on one I2C bus ----------
+// The shop page gives no dimensions, so 25.4 x 12.7 mm is an estimate. A 1x4 pin header is soldered into the holes.
+export function qwiicAdapter(o = {}) {
+  const names = ['GND', '3V3', 'SDA', 'SCL'], x = (i) => -0.381 + i * PITCH;
+  const qt = (side, sx) => names.map((n, i) => ({ k: side + '.' + n, n, x: sx * 1.3, y: 0.33 - i * 0.1, z: 0.16, hdr: false, lx: sx * 0.5, ly: (1.5 - i) * 0.17 }));
   return board({
-    w: 2.2, h: 1.9, r: 0.08, base: '#16181b',
-    pins: names.map((n, i) => ({ k: n, x: -0.9, y: PITCH - i * PITCH, lx: -0.45 })),
+    bare: o.bare,
+    w: 2.54, h: 1.27, r: 0.08, base: '#b3202a',
+    pins: [...names.map((n, i) => ({ k: n, x: x(i), y: -0.4, ly: -0.4 - (i % 2) * 0.24 })), ...qt('QA', -1), ...qt('QB', 1)],
     draw(p) {
-      names.forEach((n, i) => p.text(n, -0.7, PITCH - i * PITCH, 0.095, { align: 'left' }));
-      p.text('VIBRATION', 0.3, -0.76, 0.09, { color: '#c9cdd1' });
+      names.forEach((n, i) => p.text(n, x(i), -0.1, 0.075, { rot: 90 }));
+      p.text('Qwiic', 0, 0.42, 0.1);
     },
-    parts(add) { add(cyl(0.5, 0.27, 32), M.can, 0.42, 0.12); add([0.16, 0.26, 0.1], M.chip, -0.28, -0.42); add([0.16, 0.09, 0.06], M.pass, -0.3, 0.55); },
+    parts(add) { for (const sx of [-1, 1]) add([0.45, 0.6, 0.29], M.jst, sx * 0.97, 0.18); },
   });
 }

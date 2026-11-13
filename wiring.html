@@ -11,7 +11,7 @@
   --bg: #e9eef0; --bench: #f6f8f9; --fg: #142024; --muted: #5a6b71; --line: #cfd9dd;
   --accent: #0a7c86; --accent-soft: #d5ecee; --warn: #b4441f;
   --ours: #0f9aa5;
-  --n-3v3: #d0312d; --n-gnd: #2a2a2e; --n-sda: #1f63d6; --n-scl: #d99a00; --n-5v: #e5731b; --n-mot: #1f9d55;
+  --n-3v3: #d0312d; --n-gnd: #2a2a2e; --n-sda: #1f63d6; --n-scl: #d99a00; --n-5v: #e5731b;
   --font-body: "IBM Plex Sans Thai", "Leelawadee UI", Tahoma, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", Consolas, ui-monospace, monospace;
 }
@@ -63,6 +63,8 @@ h1 { font-size: 1.5rem; margin: 0; letter-spacing: .01em; text-wrap: balance; }
 }
 .lenbox b { font-size: 11px; color: #a9bbc0; font-weight: 600; letter-spacing: .04em; }
 .lenrow { display: flex; justify-content: space-between; gap: 12px; }
+.lenat { color: #a9bbc0; font-size: 11px; text-align: right; }
+@media (max-width: 520px) { .lenbox { font-size: 11px; padding: 6px 8px; min-width: 170px; } }
 .panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .card { background: var(--bench); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
 .card h2 { font-size: .8rem; margin: 0 0 10px; color: var(--muted); letter-spacing: .06em; }
@@ -81,7 +83,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .seg.cam button { text-align: center; padding: 7px 2px; }
 .nets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 13px; }
 .nets label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
-td.route { color: var(--muted); font-size: 12px; }
+td.cab { padding-top: 12px; color: var(--muted); font-size: 12px; }
+td.cab b { color: var(--fg); font-size: 13px; }
+.buy small { display: block; color: var(--muted); font-size: 12px; }
+.total { font-size: 13.5px; margin: 10px 0 0; }
 .steps { margin: 0; padding-left: 20px; font-size: 13.5px; }
 .steps li { margin: 4px 0; }
 .buy { margin: 0; padding-left: 18px; font-size: 13.5px; }
@@ -101,13 +106,15 @@ th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04
 #info p { margin: 4px 0; font-size: 13.5px; }
 #info ul { margin: 6px 0 0; padding-left: 18px; font-size: 13.5px; }
 .bom td:last-child { white-space: nowrap; }
+.where small { color: var(--muted); font-size: 11.5px; }
+.where td:last-child { text-align: right; }
 .credit { font-size: 11.5px; color: var(--muted); margin-top: 14px; }
 .credit a { color: var(--accent); }
 </style>
 </head><body>
 <header>
   <h1>หูฟังของคุณ + อุปกรณ์เสริม C7</h1>
-  <p class="sub"><a href="dev.html">หน้า dev</a> · แบบร่างข้อเสนอ ยังไม่ได้สร้างจริง · ขนาดเป็นค่าประมาณ</p>
+  <p class="sub"><a href="dev.html">หน้า dev</a> · <a href="structure.html">โครงสร้างในกล่อง</a> · แบบร่างข้อเสนอ ยังไม่ได้สร้างจริง · ขนาดเป็นค่าประมาณ</p>
 </header>
 
 <div class="grid">
@@ -121,10 +128,17 @@ th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04
       <div class="lenrow"><span>ใช้จริง</span><span id="lenUsed">–</span></div>
       <div class="lenrow"><span>ปลาย</span><span id="lenSpare">–</span></div>
       <hr>
-      <b>สายตลับหู → กล่อง (สาย 50 ซม.)</b>
+      <b>ระยะหู → C7 (ค่าจากโมเดล)</b>
+      <div class="lenrow"><span>เส้นตรง ท่าตรง</span><span id="lenStraight">–</span></div>
+      <div class="lenrow"><span>สายเดินจริง ท่าตรง</span><span id="lenRest">–</span></div>
+      <div class="lenrow"><span>ก้มสุด 45°</span><span id="lenFlex">–</span></div>
+      <div class="lenrow"><span>เงยสุด 30°</span><span id="lenExt">–</span></div>
+      <div class="lenrow"><span>ยาวสุดทุกท่า</span><span id="lenMax">–</span></div>
+      <div class="lenat" id="lenAt"></div>
+      <hr>
+      <b>สายที่ใช้ 20 + 20 = 40 ซม.</b>
       <div class="lenrow"><span>ซ้าย ตอนนี้</span><span id="lenL">–</span></div>
       <div class="lenrow"><span>ขวา ตอนนี้</span><span id="lenR">–</span></div>
-      <div class="lenrow"><span>ยาวสุดที่เจอ</span><span id="lenMax">–</span></div>
       <div class="lenrow"><span>เหลือเผื่อ</span><span id="lenLeft">–</span></div>
     </div>
     <div class="hint" id="hint">ลากเพื่อหมุน · ล้อเมาส์/สองนิ้วเพื่อซูม · แตะชิ้นส่วนเพื่อดูรายละเอียด</div>
@@ -145,7 +159,7 @@ th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04
         <button id="vBack">หลัง</button>
         <button id="vTop">บน</button>
       </div>
-      <div id="wearRow"><div class="row"><label><input type="checkbox" id="person" checked> แสดงตัวคน</label><label><input type="checkbox" id="tags" checked> ป้ายชื่อ</label></div>
+      <div id="wearRow"><div class="row"><label><input type="checkbox" id="person" checked> แสดงตัวคน</label><label><input type="checkbox" id="tags" checked> ป้ายชื่อ</label><label><input type="checkbox" id="xray" checked> มองทะลุเห็นบอร์ดข้างใน</label></div>
       <p class="note"><span class="dot" style="background:var(--ours)"></span>สีเขียวอมฟ้าและสีขาว = อุปกรณ์เสริมของเรา · <span class="dot" style="background:#25292e"></span>สีเทาเข้ม = หูฟังของผู้ใช้</p></div>
       <div id="benchRow" hidden>
         <h2 style="margin-top:4px">เปิด/ปิดสายในผัง</h2>
@@ -179,13 +193,60 @@ th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04
     <div class="card" id="info"></div>
 
     <div class="card">
-      <h2>สายที่ต้องซื้อ</h2>
+      <h2>อุปกรณ์ตัวไหนอยู่ตรงไหน</h2>
+      <div class="tablewrap"><table class="where">
+        <tr><th>ตำแหน่ง</th><th>อุปกรณ์</th><th>จำนวน</th></tr>
+        <tr><td rowspan="2">ข้างหูซ้าย<br><small>ด้านนอกฝาครอบหูฟัง</small></td><td>ตลับเซ็นเซอร์</td><td class="mono">1</td></tr>
+        <tr><td>BNO085 (0x4A) ในตลับ</td><td class="mono">1</td></tr>
+        <tr><td rowspan="2">ข้างหูขวา<br><small>ด้านนอกฝาครอบหูฟัง</small></td><td>ตลับเซ็นเซอร์</td><td class="mono">1</td></tr>
+        <tr><td>BNO085 (0x4B) ในตลับ + สายสั้น 3Vo → DI</td><td class="mono">1</td></tr>
+        <tr><td rowspan="2">ข้างคอซ้าย<br><small>จากใต้หูลงมาถึงหลังคอ</small></td><td>สาย Qwiic อ่อน 20 ซม.</td><td class="mono">2</td></tr>
+        <tr><td>Qwiic Adapter (ข้อต่อกลางสาย)</td><td class="mono">1</td></tr>
+        <tr><td rowspan="2">ข้างคอขวา</td><td>สาย Qwiic อ่อน 20 ซม.</td><td class="mono">2</td></tr>
+        <tr><td>Qwiic Adapter (ข้อต่อกลางสาย)</td><td class="mono">1</td></tr>
+        <tr><td>บ่าทั้งสองข้าง<br><small>จากใต้ไหปลาร้า อ้อมหลังคอ</small></td><td>แถบที่ดามนิ้วอะลูมิเนียม 45.7 ซม.</td><td class="mono">1</td></tr>
+        <tr><td rowspan="10">หลังคอ ตรงปุ่ม C7<br><small>กล่อง C7 หนีบกลางแถบ</small></td><td>กล่อง C7</td><td class="mono">1</td></tr>
+        <tr><td>ESP32 DevKit V1</td><td class="mono">1</td></tr>
+        <tr><td>GY-521 MPU6050 (0x68)</td><td class="mono">1</td></tr>
+        <tr><td>Qwiic Adapter (จุดแยก) + ก้านขา 4 ขา</td><td class="mono">2</td></tr>
+        <tr><td>สาย Qwiic 5 ซม.</td><td class="mono">1</td></tr>
+        <tr><td>สายจัมเปอร์เมีย-เมีย<br><small>8 เส้นสำหรับ I2C + 2 เส้นตัดปลายสำหรับ VIN, GND</small></td><td class="mono">10</td></tr>
+        <tr><td>แบต LiPo 503035</td><td class="mono">1</td></tr>
+        <tr><td>TP4056 USB-C</td><td class="mono">1</td></tr>
+        <tr><td>สวิตช์เลื่อน</td><td class="mono">1</td></tr>
+        <tr><td>MT3608</td><td class="mono">1</td></tr>
+        <tr><td>บนศีรษะ</td><td>หูฟังครอบหูของผู้ใช้</td><td class="mono">1</td></tr>
+      </table></div>
+      <p class="note">รวม: BNO085 2, Qwiic Adapter 4, สาย Qwiic 20 ซม. 4, สาย Qwiic 5 ซม. 1 · ติ๊ก "มองทะลุเห็นบอร์ดข้างใน" ในมุมมองสวมใส่เพื่อดูบอร์ดขนาดจริงในตลับและกล่อง</p>
+      <p class="note">กล่อง C7 ขยายเป็น 96 × 60 × 35 มม. เพื่อให้หัวจัมเปอร์ใต้ ESP32 ใส่ได้จริง ดูว่าแต่ละชิ้นวางและยึดอย่างไร สายเดินทางไหน และภาพแยกชิ้นได้ที่หน้า <a href="structure.html" style="color:var(--accent)">โครงสร้างในกล่อง</a></p>
+    </div>
+
+    <div class="card">
+      <h2>ขา 3V3 ขาเดียว ไปเซ็นเซอร์ 3 ตัวได้อย่างไร</h2>
+      <ol class="steps">
+        <li>ขา ESP32 แต่ละขาเสียบสายได้เส้นเดียว จึง<b>ไม่แยกสายที่ขา</b> ใช้ 4 ขา (<span class="mono">3V3</span>, <span class="mono">GND</span>, <span class="mono">D21</span>, <span class="mono">D22</span>) ขาละ 1 เส้น ไปที่แผ่น Qwiic Adapter 1</li>
+        <li>บนแผ่น Qwiic Adapter จุดที่ชื่อเดียวกันต่อถึงกันด้วยลายทองแดง: ช่อง Qwiic 2 ช่อง + รู 4 รู จึงเป็นจุดแยก 1 เข้า 2 ออก</li>
+        <li>Adapter 1: ช่องซ้าย → สายไปหูซ้าย, ช่องขวา → สายสั้นไป Adapter 2</li>
+        <li>Adapter 2: ขา 4 ขา → GY-521, ช่องขวา → สายไปหูขวา</li>
+        <li>สายไปหูแต่ละข้าง: สาย Qwiic 20 ซม. 2 เส้น ต่อกันด้วย Qwiic Adapter อีก 1 แผ่นกลางสาย</li>
+      </ol>
+      <p class="note">หัวต่อมี 2 แบบ · <b>หัว Qwiic</b> (JST-SH ระยะขา 1.0 มม. 4 ขา): ที่ปลายสายเป็นหัวพลาสติกขาวตัวเมีย เสียบเข้าช่องบนบอร์ดซึ่งเป็นขาตัวผู้ มีร่องบังคับ เสียบได้ทางเดียว · <b>หัวจัมเปอร์</b> (ระยะขา 2.54 มม.): หัวพลาสติกดำตัวเมียรูเดียว เสียบเข้าขาตัวผู้ของ ESP32, GY-521 และก้านขาที่บัดกรีบน Adapter</p>
+      <p class="note">ต้องบัดกรี 4 จุด: ก้านขาตัวผู้ 4 ขาบน Adapter 1 และ 2, ก้านขาของ GY-521, สายสั้น 3Vo → DI บน BNO085 ขวา ที่เหลือเสียบอย่างเดียว ดูสายทุกเส้นได้ในมุมมอง "ผังต่อสาย" (แตะสายเพื่อดูว่าเป็นสายอะไร)</p>
+    </div>
+
+    <div class="card">
+      <h2>ของที่ต้องซื้อ (ร้านในไทย)</h2>
       <ul class="buy">
-        <li><b>สายตลับหู → กล่อง C7 × 2 เส้น:</b> <a href="https://www.sparkfun.com/products/17257" target="_blank" rel="noopener">SparkFun Flexible Qwiic Cable 500 mm (PRT-17257)</a> สาย 4 เส้นฉนวนอ่อนแบบซิลิโคน หัว JST-SH 1.0 มม. 4 ขาทั้งสองปลาย สีแดง 3V3, ดำ GND, น้ำเงิน SDA, เหลือง SCL เสียบช่อง STEMMA QT ของ BNO085 ได้โดยไม่ต้องบัดกรี ปลายฝั่งกล่องตัดหัวออกแล้วบัดกรี</li>
-        <li><b>ทางเลือก:</b> <a href="https://www.adafruit.com/product/5384" target="_blank" rel="noopener">Adafruit STEMMA QT / Qwiic 300 mm (#5384)</a> หรือรุ่น 400 mm หัวแบบเดียวกัน แต่สั้นกว่า เทียบกับค่า "ยาวสุดที่เจอ" ในโมเดลก่อนซื้อ</li>
-        <li><b>สายในกล่อง:</b> สายไฟอ่อนเส้นเล็ก (ประมาณ 28 AWG) หลายสี สำหรับต่อ GY-521, โมดูลมอเตอร์ และวงจรแบต</li>
+        <li><b>SparkFun Qwiic Adapter × 4</b> (จุดแยกในกล่อง 2, ข้อต่อกลางสาย 2)<small><a href="https://www.arduitronics.com/product/1997/sparkfun-qwiic-adapter" target="_blank" rel="noopener">Arduitronics AG00305</a> · 95 บาท/แผ่น · พร้อมส่ง</small></li>
+        <li><b>Flexible Qwiic Cable 200 mm × 4</b> (ข้างละ 2 เส้น) ฉนวนซิลิโคนอ่อน หัว JST 1 มม. 4 ขา<small><a href="https://www.arduitronics.com/product/6809/flexible-qwiic-cable-200mm-sparkfun-usa-%E0%B8%AA%E0%B8%B2%E0%B8%A2%E0%B8%AD%E0%B9%88%E0%B8%AD%E0%B8%99-%E0%B8%A2%E0%B8%B2%E0%B8%A7-20cm" target="_blank" rel="noopener">Arduitronics AG30260</a> · 120 บาท/เส้น · พร้อมส่ง</small></li>
+        <li><b>สาย Qwiic 50 mm × 1</b> (Adapter 1 → Adapter 2) หัว JST SH 4 ขาตัวเมียทั้งสองปลาย<small><a href="https://th.cytron.io/p-stemmaqt-qwiic-jst-sh-4-pin-cable-50mm-long" target="_blank" rel="noopener">Cytron ไทย WR-SQ-50MM</a> · 10 บาท · มีของ 18 เส้น · ถ้าจะซื้อร้านเดียว ใช้ <a href="https://www.arduitronics.com/product/6808/flexible-qwiic-cable-100mm-sparkfun-usa-%E0%B8%AA%E0%B8%B2%E0%B8%A2%E0%B8%AD%E0%B9%88%E0%B8%AD%E0%B8%99-%E0%B8%A2%E0%B8%B2%E0%B8%A7-10cm" target="_blank" rel="noopener">Flexible Qwiic 100 mm AG20260</a> 120 บาทแทนได้</small></li>
+        <li><b>สายจัมเปอร์เมีย-เมีย 8 เส้น</b> (ESP32 → Adapter 1 และ Adapter 2 → GY-521)<small><a href="https://th.cytron.io/c-jumper-wire" target="_blank" rel="noopener">Cytron ไทย Female to Female Jumper Wire</a> · 18 บาท · หน้าร้านไม่บอกความยาวและจำนวนเส้น ต้องเช็กก่อนสั่ง</small></li>
+        <li><b>ก้านขาตัวผู้ 2.54 มม. 4 ขา × 2</b> (บัดกรีบน Adapter 1 และ 2) ซื้อก้างปลาขาตรง 1×40 ขา 1 เส้น แล้วหักออกมา 4 ขา 2 ชิ้น (ที่เหลือใช้กับ GY-521 ได้)<small><a href="https://www.arduitronics.com/product/487/%E0%B8%81%E0%B9%89%E0%B8%B2%E0%B8%87%E0%B8%9B%E0%B8%A5%E0%B8%B2-40p-2-54mm-pin-header-dip-straight-single-row-1-x-40-pin-6-%E0%B8%AA%E0%B8%B5" target="_blank" rel="noopener">Arduitronics SKU-00487</a> · 5 บาท/เส้น · พร้อมส่ง · ขายาว 11 มม. · หรือ <a href="https://th.cytron.io/p-straight-pin-header-male-1x40-ways" target="_blank" rel="noopener">Cytron ไทย CN-PH-M140S</a> 10 บาท มีของ 48 เส้น</small></li>
       </ul>
-      <p class="note">Adafruit ระบุว่าสาย 300 มม. ถือว่ายาวสำหรับ I2C ถ้าอ่านค่าผิดพลาดให้ลดความเร็วบัสในเฟิร์มแวร์ ยังไม่ได้ทดสอบสาย 50 ซม. 2 เส้นกับบอร์ดจริง</p>
+      <p class="total">รวมทั้งหมด <b class="mono">893 บาท</b> ไม่รวมค่าส่ง</p>
+      <p class="note">รายการสั่งซื้อฉบับเต็ม (ซื้อร้านเดียว, ชุดไฟแบต, ของประกอบ, จำนวนและขนาดทุกชิ้น): <a href="docs/SHOPPING_LIST.pdf" target="_blank" rel="noopener" style="color:var(--accent)">docs/SHOPPING_LIST.pdf</a></p>
+      <p class="note">ราคาและสต็อกดูจากหน้าร้านเมื่อ 13 พ.ย. 2026 อาจเปลี่ยนได้ · ไม่พบสาย Qwiic 50 ซม. และตัวแยก Qwiic หลายช่องในร้านไทยที่ค้น จึงใช้สาย 20 ซม. 2 เส้นต่อกันแทน · สาย JST-SH 1.0 มม. ยี่ห้ออื่น (เช่นสาย "reverse") อาจเรียงขากลับด้าน ต้องวัดด้วยมิเตอร์ก่อนเสียบ</p>
+      <p class="note">Adafruit ระบุว่าสาย 300 มม. ถือว่ายาวสำหรับ I2C ยังไม่ได้ทดสอบสาย 40 ซม. 2 ข้างกับบอร์ดจริง ถ้าอ่านค่าผิดพลาดให้ลดความเร็วบัสในเฟิร์มแวร์</p>
     </div>
 
     <div class="card">
@@ -205,7 +266,7 @@ th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04
     <div class="card">
       <h2>ตารางต่อสาย</h2>
       <div class="tablewrap"><table id="pinTable"></table></div>
-      <p class="note">ขา 3V3 และ GND ของ ESP32 มีสายหลายเส้น ให้รวมสายที่จุดเดียวก่อนต่อเข้าขา · ตำแหน่งขาในผังตรงกับบอร์ดจริงในรูปที่ใช้อ้างอิง ถ้าบอร์ดที่ซื้อเป็นรุ่นอื่นให้ดูชื่อขาบนบอร์ด</p>
+      <p class="note">จัดกลุ่มตามสายจริงแต่ละเส้น · ความยาวสายในผังไม่ตรงมาตราส่วน · ตำแหน่งขาในผังตรงกับบอร์ดจริงในรูปที่ใช้อ้างอิง ถ้าบอร์ดที่ซื้อเป็นรุ่นอื่นให้ดูชื่อขาบนบอร์ด</p>
     </div>
 
     <div class="card">
@@ -213,15 +274,15 @@ th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04
       <div class="tablewrap"><table class="bom">
         <tr><th>ชิ้นส่วน</th><th>ของใคร</th><th>ขนาด</th></tr>
         <tr><td>หูฟังครอบหู</td><td>ผู้ใช้</td><td class="mono">ฝาครอบ ~100×84 มม.</td></tr>
-        <tr><td>ตลับเซ็นเซอร์ข้างหู × 2</td><td>ของเรา</td><td class="mono">34×30×9 มม.</td></tr>
+        <tr><td>ตลับเซ็นเซอร์ข้างหู × 2</td><td>ของเรา</td><td class="mono">39×28.5×9 มม.</td></tr>
         <tr><td>แถบที่ดามนิ้วอะลูมิเนียม × 1</td><td>ของเรา</td><td class="mono">457 มม. × ½–1 นิ้ว</td></tr>
         <tr><td>Adafruit BNO085 (#4754) × 2</td><td>ของเรา</td><td class="mono">25.6×22.7 มม.</td></tr>
         <tr><td>ESP32 DevKit V1 30 ขา</td><td>ของเรา</td><td class="mono">~51.5×28.2 มม.</td></tr>
         <tr><td>GY-521 MPU6050</td><td>ของเรา</td><td class="mono">21×16 มม.</td></tr>
         <tr><td>LiPo 503035 500 mAh</td><td>ของเรา</td><td class="mono">35×30×5 มม.</td></tr>
         <tr><td>TP4056 USB-C + MT3608 + สวิตช์</td><td>ของเรา</td><td class="mono">28×17 / 36×17 มม.</td></tr>
-        <tr><td>โมดูลมอเตอร์สั่น</td><td>ของเรา</td><td class="mono">ขึ้นกับรุ่น</td></tr>
-        <tr><td>กล่อง C7</td><td>ของเรา</td><td class="mono">76×50×22 มม.</td></tr>
+        <tr><td>SparkFun Qwiic Adapter × 4</td><td>ของเรา</td><td class="mono">~25×13 มม.</td></tr>
+        <tr><td>กล่อง C7</td><td>ของเรา</td><td class="mono">96×60×35 มม.</td></tr>
       </table></div>
       <p class="note">บอร์ดในมุมมอง "ผังต่อสาย" มีขนาดจริง ส่วนตลับ กล่อง และแถบเป็นขนาดที่เสนอ</p>
       <p class="credit">หัวสแกน: “Infinite, 3D Head Scan” โดย Lee Perry-Smith, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>, อ้างอิงจาก triplegangers.com ไฟล์จากตัวอย่างของ three.js (ดู assets/vendor/README.md) ส่วนหูฟังและอุปกรณ์เสริมสร้างจากโค้ด</p>

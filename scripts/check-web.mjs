@@ -520,4 +520,63 @@ await test('collect: simulator world is ENU (accel turned by q points up, ears m
     assert.ok(rel.angle > 170, `ears are mirrored, ${rel.angle}`);
 });
 
+// ---------- structure.html: every part fits its enclosure, nothing collides, everything has a mount ----------
+const S = await import('data:text/javascript,' + encodeURIComponent(await readFile(new URL('../assets/structure-layout.js', import.meta.url), 'utf8')));
+const overlap = (a, b, e = 1e-6) => a[0] < b[3] - e && b[0] < a[3] - e && a[1] < b[4] - e && b[1] < a[4] - e && a[2] < b[5] - e && b[2] < a[5] - e;
+await test('structure: C7 box parts fit inside and do not collide', () => {
+    const u = S.C7, by = Object.fromEntries(u.parts.map((p) => [p.id, p])), e = 1e-6;
+    const solids = [];
+    for (const p of u.parts) { solids.push([p.id, p.box]); if (p.bump) solids.push([p.id, p.bump]); }
+    for (const po of u.posts) solids.push(['post-' + po.id, [po.x - u.postR, po.y - u.postR, 0, po.x + u.postR, po.y + u.postR, u.tray.z]]);
+    for (const [x0, y0, x1, y1] of u.batteryRibs) solids.push(['rib', [x0, y0, 0, x1, y1, 6]]);
+    for (const [id, pins] of Object.entries(u.used)) for (const n of pins) solids.push([`jumper-${id}`, S.jumperBox(by[id], n), id]);
+    for (const [name, b] of solids) {
+        assert.ok(b[0] >= -u.in.w / 2 - e && b[3] <= u.in.w / 2 + e && b[1] >= -u.in.h / 2 - e && b[4] <= u.in.h / 2 + e && b[2] >= -e && b[5] <= u.in.d + e, `${name} is outside the box: ${b}`);
+    }
+    for (let i = 0; i < solids.length; i++) for (let j = i + 1; j < solids.length; j++) {
+        const [a, A, ownA] = solids[i], [b, B, ownB] = solids[j];
+        if (a === b || ownA === b || ownB === a || (a === 'rib' && b === 'rib')) continue;   // a jumper belongs under its own board
+        assert.ok(!overlap(A, B), `${a} collides with ${b}`);
+    }
+    // the tray is a plate between the levels: floor parts stay below it, boards above it, pins and jumpers pass through its slots
+    for (const p of u.parts) assert.ok(p.level === 'floor' ? p.box[5] <= u.tray.z : p.box[2] >= u.tray.z + u.tray.t, `${p.id} crosses the tray`);
+    for (const [id, pins] of Object.entries(u.used)) for (const n of pins) {
+        const j = S.jumperBox(by[id], n);
+        assert.ok(u.tray.slots.some((s) => j[0] >= s[0] && j[3] <= s[2] && j[1] >= s[1] && j[4] <= s[3]), `jumper ${id}.${n} has no slot in the tray`);
+    }
+    for (const s of u.tray.slots) assert.ok(s[0] > -u.tray.w / 2 + 1 && s[2] < u.tray.w / 2 - 1 && s[1] > -u.tray.h / 2 + 1 && s[3] < u.tray.h / 2 - 1, `slot ${s} cuts the tray edge`);
+    // the 5 cm link hangs clear of the ESP32, and the height budget adds up to the inside depth
+    assert.ok(u.link.lowY > by.esp.box[4] + 2 && u.link.gap < u.link.len, `link sags to y=${u.link.lowY}`);
+    assert.ok(Math.abs(u.stack.reduce((t, r) => t + r[1], 0) - u.in.d) < 1e-9, 'stack-up equals the inside depth');
+    assert.ok(u.zBoard >= 5.3 + S.JUMPER.bend + S.JUMPER.housing + S.JUMPER.strip, 'jumpers clear the battery');
+    assert.deepEqual([u.out.w, u.out.h, u.out.d], [96, 60, 35]);
+});
+await test('structure: ear pods and joint case hold their board with room for the plug', () => {
+    for (const u of [S.UNITS.podL, S.UNITS.podR, S.UNITS.joint]) {
+        for (const p of u.parts) {
+            const b = p.box;
+            assert.ok(b[0] >= -u.in.w / 2 && b[3] <= u.in.w / 2 && b[1] >= -u.in.h / 2 && b[4] <= u.in.h / 2 && b[2] >= 0 && b[5] <= u.in.d, `${p.id} is outside ${u.id}`);
+        }
+        assert.ok(u.cableRoom >= 8, `${u.id}: ${u.cableRoom} mm for the plug and the bend`);
+    }
+    const [l, r] = [S.UNITS.podL, S.UNITS.podR];
+    assert.equal(l.exit.x, -r.exit.x, 'pods are mirror images');
+    assert.ok(Math.sign(S.pinAt(l.parts[0], l.socket)[0] - l.parts[0].at[0]) === l.s && Math.sign(S.pinAt(r.parts[0], r.socket)[0] - r.parts[0].at[0]) === r.s, 'cable uses the socket on the exit side');
+});
+await test('structure: every part has a mount, and wires end on real pins', () => {
+    for (const u of Object.values(S.UNITS)) for (const p of [...u.parts, ...u.shell]) assert.ok(p.mount && p.mount.length > 10 && p.name && p.size, `${p.id} has no mount`);
+    const by = Object.fromEntries(S.C7.parts.map((p) => [p.id, p]));
+    const nets = { v33: 0, gnd: 0, sda: 0, scl: 0, bat: 0 };
+    for (const w of S.C7_WIRES) {
+        for (const [id, pin] of [w.a, w.b]) assert.ok(by[id] && (by[id].kind ? S.BOARD[by[id].kind].pins[pin] : by[id].pins[pin]), `${id}.${pin} does not exist`);
+        assert.ok(S.C7_CABLES[w.cable], w.cable); nets[w.net]++;
+    }
+    // one wire per header pin: no pin carries two jumpers
+    const used = S.C7_WIRES.flatMap((w) => [w.a.join('.'), w.b.join('.')]).filter((k) => !/^(bat|tp|mt|sw)\./.test(k));
+    assert.equal(new Set(used).size, used.length, 'a header pin is used twice');
+    for (const [id, pins] of Object.entries(S.C7.used)) for (const n of pins) assert.ok(used.includes(`${id}.${n}`), `${id}.${n} has a jumper but no wire`);
+    assert.deepEqual(nets, { v33: 2, gnd: 5, sda: 2, scl: 2, bat: 4 });
+    assert.ok(S.hardware().length >= 5);
+});
+
 console.log(`\n${passed} checks passed`);

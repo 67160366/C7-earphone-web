@@ -9,9 +9,9 @@ const phys = (o) => new THREE.MeshPhysicalMaterial(o);
 // Dimension contract. Every builder reads from here so mating parts share one datum.
 export const DIM = {
   cup: { ry: 5.0, rz: 4.2, cushion: 2.2, shellAt: 2.15, shellDepth: 3.0, faceScale: 0.66 },
-  pod: { z: 3.4, y: 3.0, x: 0.9, pad: 0.14 },                 // 34 x 30 x 9 mm + mounting pad
+  pod: { z: 3.9, y: 2.85, x: 0.9, pad: 0.14 },                // 39 x 28.5 x 9 mm + mounting pad (structure-layout.js)
   strip: { stock: 45.7, alu: 0.15, foam: 0.4, skinGap: 0.03 }, // 18 in strip; thickness is assumed
-  box: { w: 7.6, h: 5.0, d: 2.2 },                             // 76 x 50 x 22 mm: fits the ESP32 DevKit, LiPo, charger, boost, GY-521, motor
+  box: { w: 9.6, h: 6.0, d: 3.5 },                             // 96 x 60 x 35 mm, two levels; the inside is laid out in structure-layout.js
 };
 export const STRIP_WIDTHS = { half: 1.27, three: 1.905, one: 2.54 };   // 1/2, 3/4, 1 inch
 
@@ -253,12 +253,12 @@ export function buildC7Brace({ hit, width = STRIP_WIDTHS.three }) {
   mesh(roundedBox(3.4, width + 1.0, 0.8, 0.22), MAT.rubber, box, V(0, 0, -0.22));       // saddle that grips the strip
   mesh(roundedBox(B.w, B.h, B.d, 0.5), MAT.pod, box, V(0, 0, 0.13 + B.d / 2));            // housing
   mesh(roundedBox(B.w - 1.3, B.h - 1.3, 0.12, 0.05), MAT.lid, box, V(0, 0, 0.13 + B.d + 0.01));
-  mesh(roundedBox(0.95, 0.12, 0.34, 0.05), MAT.port, box, V(0, -B.h / 2 + 0.02, 0.13 + B.d / 2));   // USB-C, underside
+  mesh(roundedBox(0.95, 0.12, 0.34, 0.05), MAT.port, box, V(0.25, -B.h / 2 + 0.02, 0.75));   // USB-C, underside
   mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 16), MAT.led, box, V(B.w / 2 - 0.75, B.h / 2 - 0.42, 0.13 + B.d + 0.02), [Math.PI / 2, 0, 0]);
   // two strain reliefs on top: one cable arrives from each ear pod (local +x is the wearer's right)
   box.userData.glands = {};
   for (const [id, sx] of [['L', -1], ['R', 1]]) {
-    const at = V(sx * (B.w / 2 - 1.1), B.h / 2 + 0.1, 0.13 + B.d / 2);
+    const at = V(sx * (B.w / 2 - 0.55), B.h / 2 + 0.1, 0.13 + B.d - 0.6);   // cable notches in the top wall, near the lid
     mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 14), MAT.rubber, box, at);
     box.userData.glands[id] = at.clone().add(V(0, 0.4, 0));
   }

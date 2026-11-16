@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>C7-BioSync หูฟังที่ส่งข้อมูลผ่าน Wi-Fi</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 26h22M6 26 19 8' stroke='%230F6E66' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3Ccircle cx='19' cy='8' r='3.5' fill='%230F6E66'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/devices.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="wrap">
+            <a class="brand" href="./"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 26h22M5 26 18 8" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/><circle cx="18" cy="8" r="3.5" fill="currentColor"/></svg>C7-BioSync <span class="muted dev-tag">Wi-Fi</span></a>
+            <a class="small" href="dev.html">หน้า dev</a>
+            <span id="conn" class="chip" data-state="waiting" role="status">กำลังติดต่อเซิร์ฟเวอร์</span>
+        </div>
+    </header>
+
+    <main class="wrap devices-main">
+        <div class="devices-head">
+            <h1>หูฟังที่ส่งข้อมูลผ่าน Wi-Fi</h1>
+            <p id="summary" class="muted">กำลังโหลด</p>
+        </div>
+
+        <div id="list" class="device-list" aria-live="polite"></div>
+
+        <section id="empty" class="panel block" hidden>
+            <h2>ยังไม่มีหูฟังส่งข้อมูลเข้ามา</h2>
+            <ol>
+                <li>เปิดหูฟัง แล้วต่อ Wi-Fi ชื่อ <b>C7-Setup-xxxx</b> จากมือถือหรือคอมพิวเตอร์</li>
+                <li>เปิด <span class="mono">http://192.168.4.1/</span> ใส่ชื่อและรหัส Wi-Fi ที่อยู่เซิร์ฟเวอร์ และรหัสส่งข้อมูล แล้วกดบันทึก</li>
+                <li>รอสักครู่ หูฟังจะขึ้นในหน้านี้เอง</li>
+            </ol>
+        </section>
+
+        <section id="history" class="panel block" hidden>
+            <div class="history-head">
+                <h2 id="historyTitle">ค่าย้อนหลัง</h2>
+                <button id="historyClose" class="btn btn-sm" type="button">ปิด</button>
+            </div>
+            <div class="table-scroll">
+                <table class="history-table">
+                    <thead><tr><th>เวลา</th><th>มุมคอ</th><th>ก้ม/เงย</th><th>เอียง</th><th>หัน</th><th>ต้นคอ</th></tr></thead>
+                    <tbody id="historyRows"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <p class="small muted">มุมคอเป็นค่าประมาณจากแบบจำลอง เทียบกับท่าตอนตั้งท่าเริ่มต้น ไม่ใช่การวินิจฉัยทางการแพทย์</p>
+    </main>
+
+    <script src="assets/c7-core.js"></script>
+    <script src="assets/devices.js"></script>
+</body>
+</html>

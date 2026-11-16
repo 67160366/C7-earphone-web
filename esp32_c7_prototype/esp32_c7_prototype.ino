@@ -1,6 +1,11 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <WebServer.h>
+#include <DNSServer.h>
+#include <Preferences.h>
 #include <esp_system.h>
 
 // ============================================================================
@@ -19,6 +24,8 @@
 // - USB 460800 baud. โหมดปกติส่ง JSON v2 ทุก 200 ms
 // - โหมดเก็บข้อมูล (คำสั่ง r เปิด / n ปิด) ส่งค่าดิบทั้ง 3 ตัวเป็นบรรทัด D,... ทุก 20 ms (50 Hz)
 //   และ JSON v2 ทุก 1 วินาที รูปแบบอธิบายใน docs/DATA_COLLECTION.md
+// - Wi-Fi: ตั้งชื่อ/รหัส Wi-Fi และที่อยู่เซิร์ฟเวอร์ผ่านหน้าเว็บของบอร์ด (ไม่ต้อง flash ใหม่) แล้วส่งค่าไป
+//   api/ingest.php ทุก 1 วินาที ดูส่วน "WiFi + ส่งข้อมูลเข้าเซิร์ฟเวอร์" ด้านล่าง และ docs/WIFI.md
 // ============================================================================
 
 #define SERIAL_BAUD       460800
@@ -1130,6 +1137,576 @@ String earAccuracyText(SafeBNO085 &bno) {
          String(bno.magAccuracy) + "/n" + String(magN);
 }
 
+// ============================================================================
+// WiFi + ส่งข้อมูลเข้าเซิร์ฟเวอร์ (docs/WIFI.md)
+// - ชื่อ/รหัส Wi-Fi, ที่อยู่เซิร์ฟเวอร์, รหัสส่งข้อมูล, ชื่ออุปกรณ์ เก็บใน NVS ตั้งผ่านหน้าเว็บของบอร์ดเอง
+//   ไม่ต้องแก้โค้ดหรือ flash ใหม่
+// - จำ Wi-Fi ได้ NET_SLOTS วง ถ้าบันทึกไว้มากกว่า 1 วง บอร์ดสแกนแล้วต่อวงที่สัญญาณแรงที่สุดก่อน
+// - โหมดตั้งค่า: บอร์ดเปิด Wi-Fi ชื่อ C7-Setup-xxxx (รหัส NET_AP_PASSWORD) แล้วเปิด http://192.168.4.1/
+//   เข้าโหมดนี้เมื่อ ยังไม่เคยตั้งค่า / ต่อ Wi-Fi ไม่ได้ / กดปุ่ม BOOT ค้าง 3 วินาที / ส่งคำสั่ง w ทาง USB
+// - ต่อ Wi-Fi ได้แล้ว: เก็บตัวอย่างทุก cfgPeriodMs ลงคิว แล้ว task แยก (core 0) POST เป็นชุดทุก 1 วินาที
+//   ไปที่ api/ingest.php การส่งไม่บล็อกการอ่านเซ็นเซอร์ใน loop() และ USB ยังส่ง JSON v2 เหมือนเดิม
+// ============================================================================
+const char *FIRMWARE_TAG    = "c7-wifi-2";
+const char *NET_DEFAULT_URL = "http://192.168.137.1:8090/api/ingest.php"; // เครื่องนี้ผ่าน Mobile hotspot ของ Windows (แก้ได้ในหน้าตั้งค่า)
+const char *NET_AP_PASSWORD = "c7setup1";                // รหัสของ Wi-Fi โหมดตั้งค่า (อย่างน้อย 8 ตัว)
+const unsigned long NET_CONNECT_TIMEOUT_MS = 20000;      // ต่อ Wi-Fi ไม่ได้ภายในเวลานี้ -> โหมดตั้งค่า
+const unsigned long NET_LOST_TIMEOUT_MS    = 60000;      // หลุดนานเกินนี้ -> โหมดตั้งค่า
+const unsigned long NET_PORTAL_RETRY_MS    = 180000;     // โหมดตั้งค่าไม่มีใครต่อเข้ามา -> ลองต่อ Wi-Fi เดิมอีกครั้ง
+const unsigned long NET_POST_INTERVAL_MS   = 1000;       // POST 1 ครั้งต่อวินาที
+const unsigned long NET_STATUS_LOG_MS      = 10000;
+const unsigned long NET_BOOT_HOLD_MS       = 3000;       // กด BOOT ค้างนานเท่านี้ = เข้าโหมดตั้งค่า
+const uint32_t      NET_PERIOD_MIN_MS      = 100;
+const uint32_t      NET_PERIOD_MAX_MS      = 60000;
+const int           NET_QUEUE_LEN          = 64;
+const int           NET_BATCH_MAX          = 25;
+const int           NET_SLOTS              = 3;          // จำนวน Wi-Fi ที่จำได้
+const int           NET_LIST_MAX           = 15;         // จำนวน Wi-Fi ที่แสดงในหน้าตั้งค่า
+
+const int NET_IDLE = 0, NET_CONNECTING = 1, NET_ONLINE = 2, NET_PORTAL = 3;
+
+struct NetSample {
+  uint32_t seq;
+  uint32_t ms;
+  uint32_t calibrationId;
+  float    pitch, roll, yaw, tilt, cva;
+  uint8_t  sensors;   // bit0 หูซ้าย, bit1 หูขวา, bit2 MPU
+  bool     valid;
+  bool     tiltOk;
+};
+
+Preferences netPrefs;
+WebServer   netServer(80);
+DNSServer   netDns;
+
+// ค่าที่ตั้งได้ อ่านจาก NVS ตอนบูตครั้งเดียว (บันทึกค่าใหม่แล้วบอร์ดรีสตาร์ต task ส่งข้อมูลจึงอ่านได้โดยไม่ต้องล็อก)
+String   netSsid[NET_SLOTS], netPass[NET_SLOTS];   // Wi-Fi ที่บันทึกไว้ เรียงชิดช่อง 0 (ช่องว่าง = ไม่มี)
+String   cfgSsid, cfgPass;                         // วงที่กำลังต่อหรือต่ออยู่
+String   cfgUrl, cfgKey, cfgName;
+uint32_t cfgPeriodMs = 200;
+String   deviceUid;
+
+volatile int      netState      = NET_IDLE;
+volatile int      netLastCode   = 0;     // HTTP code ล่าสุด (ค่าลบ = ต่อเซิร์ฟเวอร์ไม่ได้)
+volatile uint32_t netSentCount  = 0;     // ตัวอย่างที่เซิร์ฟเวอร์ตอบ 200
+volatile uint32_t netFailCount  = 0;     // ตัวอย่างที่ส่งไม่สำเร็จ (ทิ้ง)
+volatile uint32_t netDropCount  = 0;     // ตัวอย่างที่คิวเต็ม (ทิ้ง)
+QueueHandle_t     netQueue      = nullptr;
+uint32_t          netSeq        = 0;
+unsigned long     netStateSinceMs = 0;
+unsigned long     netLostSinceMs  = 0;
+unsigned long     netRestartAtMs  = 0;
+unsigned long     lastNetSampleMs = 0;
+unsigned long     lastNetStatusMs = 0;
+unsigned long     bootPressStartMs = 0;
+bool              bootHoldHandled  = false;
+bool              netPicking       = false;  // กำลังสแกนเพื่อเลือกวงที่บันทึกไว้
+uint8_t           netTriedMask     = 0;      // ช่องที่ลองต่อไปแล้วในรอบนี้
+
+String htmlEscape(const String &in) {
+  String out;
+  out.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); i++) {
+    const char c = in[i];
+    if (c == '&') out += "&amp;";
+    else if (c == '<') out += "&lt;";
+    else if (c == '>') out += "&gt;";
+    else if (c == '"') out += "&quot;";
+    else if (c == '\'') out += "&#39;";
+    else out += c;
+  }
+  return out;
+}
+
+// ตัดอักขระควบคุม " และ \ ออก ให้ใส่ใน JSON ได้โดยไม่ต้อง escape
+String cleanText(const String &in, size_t maxBytes) {
+  String out;
+  for (size_t i = 0; i < in.length() && out.length() < maxBytes; i++) {
+    const unsigned char c = (unsigned char)in[i];
+    if (c < 0x20 || c == 0x7F || c == '"' || c == '\\') continue;
+    out += (char)c;
+  }
+  out.trim();
+  return out;
+}
+
+// ชื่อคีย์ใน NVS: ช่อง 0 ใช้ "ssid"/"pass" (ค่าที่บันทึกจากเฟิร์มแวร์ c7-wifi-1 ยังใช้ได้) ช่องถัดไป "ssid1", "ssid2"
+String netKey(const char *base, int slot) {
+  return slot ? String(base) + String(slot) : String(base);
+}
+
+int netSavedCount() {
+  int n = 0;
+  for (int i = 0; i < NET_SLOTS; i++) if (netSsid[i].length()) n++;
+  return n;
+}
+
+void netLoadConfig() {
+  netPrefs.begin("c7net", false);
+  int n = 0;
+  for (int i = 0; i < NET_SLOTS; i++) {
+    const String ssid = netPrefs.getString(netKey("ssid", i).c_str(), "");
+    if (ssid.length() == 0) continue;
+    netSsid[n] = ssid;
+    netPass[n] = netPrefs.getString(netKey("pass", i).c_str(), "");
+    n++;
+  }
+  cfgUrl  = netPrefs.getString("url", NET_DEFAULT_URL);
+  cfgKey  = netPrefs.getString("key", "");
+  cfgName = netPrefs.getString("name", "");
+  cfgPeriodMs = constrain(netPrefs.getUInt("period", 200), NET_PERIOD_MIN_MS, NET_PERIOD_MAX_MS);
+  netPrefs.end();
+}
+
+const char *netStateName() {
+  switch (netState) {
+    case NET_CONNECTING: return "connecting";
+    case NET_ONLINE:     return "online";
+    case NET_PORTAL:     return "setup";
+    default:             return "off";
+  }
+}
+
+void netBeginSlot(int slot) {
+  netTriedMask |= (uint8_t)(1 << slot);
+  netPicking = false;
+  cfgSsid = netSsid[slot];
+  cfgPass = netPass[slot];
+  WiFi.begin(cfgSsid.c_str(), cfgPass.length() ? cfgPass.c_str() : nullptr);
+  netStateSinceMs = millis();
+  logStep("NET connecting to Wi-Fi \"" + cfgSsid + "\"");
+}
+
+// เลือกวงที่บันทึกไว้ ยังไม่ได้ลอง และสัญญาณแรงที่สุดจากผลสแกนล่าสุด คืน -1 ถ้าไม่เหลือให้ลอง
+// ถ้าไม่พบวงไหนเลยในรอบแรก ให้ลองช่อง 0 หนึ่งครั้ง (รองรับ Wi-Fi ที่ซ่อนชื่อ)
+int netPickNext() {
+  const int found = WiFi.scanComplete();
+  int best = -1;
+  int bestRssi = -1000;
+  for (int slot = 0; slot < NET_SLOTS; slot++) {
+    if (netSsid[slot].length() == 0 || (netTriedMask & (1 << slot))) continue;
+    for (int i = 0; i < found; i++) {
+      if (WiFi.SSID(i) == netSsid[slot] && WiFi.RSSI(i) > bestRssi) {
+        best = slot;
+        bestRssi = WiFi.RSSI(i);
+      }
+    }
+  }
+  if (best < 0 && netTriedMask == 0 && netSsid[0].length()) best = 0;
+  return best;
+}
+
+void netStartStation() {
+  netDns.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(deviceUid.c_str());
+  WiFi.setAutoReconnect(true);
+  netState = NET_CONNECTING;
+  netStateSinceMs = millis();
+  netLostSinceMs = 0;
+  netTriedMask = 0;
+  if (netSavedCount() <= 1) {
+    netBeginSlot(0);            // วงเดียว ไม่ต้องสแกน
+  } else {
+    WiFi.disconnect();
+    WiFi.scanDelete();
+    WiFi.scanNetworks(true);    // สแกนแบบไม่บล็อก ผลอ่านใน netLoop()
+    netPicking = true;
+    logStep("NET scanning to pick the strongest of " + String(netSavedCount()) + " saved Wi-Fi networks");
+  }
+}
+
+void netStartPortal(const String &why) {
+  const String apName = "C7-Setup-" + deviceUid.substring(deviceUid.length() - 4);
+  WiFi.disconnect();
+  WiFi.mode(WIFI_AP_STA);                  // AP_STA เพื่อให้สแกนหาชื่อ Wi-Fi รอบตัวได้
+  WiFi.softAP(apName.c_str(), NET_AP_PASSWORD);
+  delay(100);
+  netDns.start(53, "*", WiFi.softAPIP()); // ทุกชื่อโดเมนชี้มาที่บอร์ด มือถือจะเด้งหน้าตั้งค่าเอง
+  netPicking = false;
+  WiFi.scanDelete();
+  WiFi.scanNetworks(true);
+  netState = NET_PORTAL;
+  netStateSinceMs = millis();
+  logStep("NET setup mode (" + why + "): join Wi-Fi \"" + apName + "\" then open http://" +
+          WiFi.softAPIP().toString() + "/");
+}
+
+String netStatusText() {
+  String s = "สถานะ: ";
+  if (netState == NET_ONLINE) {
+    s += "ต่อ Wi-Fi \"" + htmlEscape(cfgSsid) + "\" แล้ว (IP " + WiFi.localIP().toString() + ", สัญญาณ " + String(WiFi.RSSI()) + " dBm)";
+  } else if (netState == NET_CONNECTING) {
+    s += netPicking ? String("กำลังค้นหา Wi-Fi ที่บันทึกไว้") : "กำลังต่อ Wi-Fi \"" + htmlEscape(cfgSsid) + "\"";
+  } else if (netState == NET_PORTAL) {
+    s += netSavedCount() ? "โหมดตั้งค่า (ยังต่อ Wi-Fi ที่บันทึกไว้ไม่ได้ หรือเปิดโหมดนี้เอง)" : "โหมดตั้งค่า (ยังไม่เคยตั้ง Wi-Fi)";
+  } else {
+    s += "ปิดอยู่";
+  }
+  s += "<br>ส่งถึงเซิร์ฟเวอร์แล้ว " + String(netSentCount) + " ตัวอย่าง, ส่งไม่สำเร็จ " + String(netFailCount) +
+       ", คิวเต็ม " + String(netDropCount) + ", คำตอบล่าสุด ";
+  if (netLastCode == 0) s += "ยังไม่ได้ส่ง";
+  else if (netLastCode < 0) s += "ต่อเซิร์ฟเวอร์ไม่ได้ (" + String(netLastCode) + ")";
+  else s += "HTTP " + String(netLastCode);
+  if (netLastCode == 401) s += " รหัสส่งข้อมูลไม่ตรงกับเซิร์ฟเวอร์";
+  return s;
+}
+
+String netPageHead(const char *title) {
+  String h;
+  h.reserve(9000);
+  h = "<!doctype html><html lang=\"th\"><head><meta charset=\"utf-8\">"
+      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>";
+  h += title;
+  h += "</title><style>"
+       "body{font-family:system-ui,sans-serif;max-width:30rem;margin:0 auto;padding:1rem;line-height:1.5;color:#1c2430;background:#f5f6f8}"
+       "h1{font-size:1.3rem;margin:.2rem 0}label{display:block;margin:.9rem 0 .2rem;font-weight:600}"
+       "input[type=text],input[type=password],input[type=number],input[type=url]{width:100%;box-sizing:border-box;padding:.6rem;font-size:1rem;border:1px solid #9aa4b2;border-radius:.4rem}"
+       "small{display:block;color:#566072}button{margin-top:1.2rem;width:100%;padding:.8rem;font-size:1rem;border:0;border-radius:.4rem;background:#1f6feb;color:#fff}"
+       ".box{background:#fff;border:1px solid #d5dae1;border-radius:.5rem;padding:.7rem .9rem;margin:.8rem 0}"
+       ".check{font-weight:400;display:flex;gap:.5rem;align-items:center}"
+       "button.net{margin-top:.4rem;padding:.6rem .7rem;display:flex;justify-content:space-between;gap:.6rem;text-align:left;background:#fff;color:#1c2430;border:1px solid #9aa4b2}"
+       "button.net span+span{color:#566072;font-size:.85rem;white-space:nowrap}button.net:disabled{opacity:.55}"
+       "</style></head><body>";
+  return h;
+}
+
+void netSendPage(const String &html) {
+  netServer.sendHeader("Cache-Control", "no-store");
+  netServer.send(200, "text/html; charset=utf-8", html);
+}
+
+// หน้าตั้งค่า แสดงเฉพาะในโหมดตั้งค่า (ต่อผ่าน Wi-Fi ของบอร์ดเอง)
+void netHandleRoot() {
+  String h = netPageHead("ตั้งค่าหูฟัง C7");
+  h += "<h1>ตั้งค่าหูฟัง C7</h1><div class=\"box\">รหัสอุปกรณ์: <b>" + deviceUid + "</b><br>" + netStatusText() + "</div>";
+
+  if (netState != NET_PORTAL) {
+    h += "<p>แก้การตั้งค่าได้ในโหมดตั้งค่าเท่านั้น: กดปุ่ม BOOT บนบอร์ดค้าง 3 วินาที แล้วต่อ Wi-Fi ชื่อ C7-Setup-" +
+         deviceUid.substring(deviceUid.length() - 4) + " จากมือถือหรือคอมพิวเตอร์</p></body></html>";
+    netSendPage(h);
+    return;
+  }
+
+  h += "<form method=\"post\" action=\"/save\">";
+
+  // Wi-Fi ที่บันทึกไว้
+  if (netSavedCount()) {
+    h += "<label>Wi-Fi ที่บันทึกไว้ (" + String(netSavedCount()) + " จาก " + String(NET_SLOTS) + " วง)</label>";
+    for (int i = 0; i < NET_SLOTS; i++) {
+      if (netSsid[i].length() == 0) continue;
+      h += "<label class=\"check\"><input type=\"checkbox\" name=\"forget" + String(i) + "\" value=\"1\"> ลบ \"" +
+           htmlEscape(netSsid[i]) + "\"</label>";
+    }
+    h += "<small>ถ้าบันทึกไว้หลายวง บอร์ดจะต่อวงที่สัญญาณแรงที่สุดก่อน</small>";
+  }
+
+  // Wi-Fi รอบตัวจากผลสแกน: แตะเพื่อใส่ชื่อในช่องด้านล่าง
+  const int found = WiFi.scanComplete();
+  h += "<label>Wi-Fi ที่พบรอบตัว</label>";
+  if (found == WIFI_SCAN_RUNNING) {
+    h += "<small>กำลังค้นหา ใช้เวลาราว 3 วินาที <a href=\"/\">แสดงรายชื่อ</a></small>";
+  } else {
+    int shown = 0;
+    for (int i = 0; i < found && shown < NET_LIST_MAX; i++) {
+      const String ssid = WiFi.SSID(i);
+      if (ssid.length() == 0) continue;
+      bool seen = false;                       // ชื่อเดียวกันจากหลายจุดกระจายสัญญาณ แสดงครั้งเดียว
+      for (int j = 0; j < i && !seen; j++) seen = (WiFi.SSID(j) == ssid);
+      if (seen) continue;
+      const wifi_auth_mode_t auth = WiFi.encryptionType(i);
+      const bool isOpen = (auth == WIFI_AUTH_OPEN);
+      const bool needsUser = (auth == WIFI_AUTH_WPA2_ENTERPRISE);
+      const int rssi = WiFi.RSSI(i);
+      String note = rssi >= -60 ? "สัญญาณแรง" : (rssi >= -75 ? "สัญญาณปานกลาง" : "สัญญาณอ่อน");
+      note += needsUser ? " · ต้องใช้ชื่อผู้ใช้ (ยังไม่รองรับ)" : (isOpen ? " · ไม่มีรหัส" : " · มีรหัส");
+      h += "<button type=\"button\" class=\"net\" data-s=\"" + htmlEscape(ssid) + "\" data-o=\"" + String(isOpen ? 1 : 0) +
+           "\" onclick=\"pick(this)\"" + String(needsUser ? " disabled" : "") + "><span>" + htmlEscape(ssid) +
+           "</span><span>" + note + "</span></button>";
+      shown++;
+    }
+    h += "<small>";
+    h += shown ? "แตะชื่อเพื่อเลือก " : "ไม่พบ Wi-Fi 2.4 GHz รอบตัว ";
+    h += "<a href=\"/scan\">ค้นหาใหม่</a></small>";
+  }
+
+  h += "<label for=\"ssid\">ชื่อ Wi-Fi ที่จะเพิ่มหรือแก้รหัส</label><input id=\"ssid\" name=\"ssid\" type=\"text\" maxlength=\"32\"" +
+       String(netSavedCount() ? "" : " required") + "><small>";
+  h += "พิมพ์เองได้ถ้า Wi-Fi ซ่อนชื่อ ใช้ได้กับ Wi-Fi 2.4 GHz ที่ใส่รหัสผ่านอย่างเดียว (ไม่รองรับแบบที่ต้องใส่ชื่อผู้ใช้หรือล็อกอินผ่านหน้าเว็บ)";
+  if (netSavedCount()) h += " เว้นว่างได้ถ้าไม่เปลี่ยน Wi-Fi";
+  h += "</small>";
+  h += "<label for=\"pass\">รหัส Wi-Fi</label><input id=\"pass\" name=\"pass\" type=\"password\" maxlength=\"63\" autocomplete=\"off\">"
+       "<small>ถ้าเป็นวงที่บันทึกไว้แล้ว เว้นว่าง = ใช้รหัสเดิม</small>"
+       "<label class=\"check\"><input type=\"checkbox\" name=\"open\" value=\"1\"> Wi-Fi นี้ไม่มีรหัส</label>";
+  h += "<label for=\"url\">ที่อยู่เซิร์ฟเวอร์</label><input id=\"url\" name=\"url\" type=\"url\" maxlength=\"200\" required value=\"" +
+       htmlEscape(cfgUrl) + "\"><small>ที่อยู่ของ api/ingest.php ขึ้นต้นด้วย http:// หรือ https://</small>";
+  h += "<label for=\"key\">รหัสส่งข้อมูล</label><input id=\"key\" name=\"key\" type=\"password\" maxlength=\"80\" autocomplete=\"off\"><small>";
+  h += cfgKey.length() ? "บันทึกไว้แล้ว เว้นว่าง = ใช้ค่าเดิม" : "ยังไม่ได้ตั้ง ใช้ค่า ingest_key ใน api/config.local.php ของเซิร์ฟเวอร์";
+  h += "</small><label for=\"name\">ชื่ออุปกรณ์</label><input id=\"name\" name=\"name\" type=\"text\" maxlength=\"40\" value=\"" +
+       htmlEscape(cfgName) + "\"><small>ชื่อที่จะเห็นบนหน้าเว็บ เช่น หูฟังเครื่องที่ 1</small>";
+  h += "<label for=\"period\">ส่งค่าทุกกี่มิลลิวินาที</label><input id=\"period\" name=\"period\" type=\"number\" min=\"" +
+       String(NET_PERIOD_MIN_MS) + "\" max=\"" + String(NET_PERIOD_MAX_MS) + "\" value=\"" + String(cfgPeriodMs) +
+       "\"><small>200 = 5 ครั้งต่อวินาที 1000 = 1 ครั้งต่อวินาที</small>";
+  h += "<button type=\"submit\">บันทึกและเริ่มใหม่</button></form>"
+       "<script>function pick(b){var f=document.forms[0],o=b.dataset.o==='1';f.ssid.value=b.dataset.s;f.open.checked=o;"
+       "f.pass.value='';(o?f.url:f.pass).focus();}</script></body></html>";
+  netSendPage(h);
+}
+
+// ค้นหา Wi-Fi รอบตัวใหม่ (เฉพาะโหมดตั้งค่า) แล้วกลับหน้าแรก
+void netHandleScan() {
+  if (netState == NET_PORTAL && WiFi.scanComplete() != WIFI_SCAN_RUNNING) {
+    WiFi.scanDelete();
+    WiFi.scanNetworks(true);
+  }
+  netServer.sendHeader("Location", "/");
+  netServer.send(302, "text/plain", "");
+}
+
+void netHandleSave() {
+  if (netState != NET_PORTAL) {
+    netServer.send(403, "text/plain; charset=utf-8", "แก้การตั้งค่าได้ในโหมดตั้งค่าเท่านั้น");
+    return;
+  }
+  String ssid = cleanText(netServer.arg("ssid"), 32);
+  String url  = netServer.arg("url");
+  url.trim();
+  const String pass = netServer.arg("pass");
+  const String key  = cleanText(netServer.arg("key"), 80);
+  const bool   open = netServer.hasArg("open");
+  const long   period = netServer.arg("period").toInt();
+
+  // รายการใหม่ = วงเดิมที่ไม่ได้ติ๊กลบ + วงที่กรอก (ชื่อซ้ำ = แก้รหัสของวงเดิม)
+  String ns[NET_SLOTS], np[NET_SLOTS];
+  int n = 0;
+  for (int i = 0; i < NET_SLOTS; i++) {
+    if (netSsid[i].length() == 0 || netServer.hasArg("forget" + String(i))) continue;
+    ns[n] = netSsid[i];
+    np[n] = netPass[i];
+    n++;
+  }
+
+  String problem;
+  if (!open && pass.length() > 0 && pass.length() < 8) {
+    problem = "รหัส Wi-Fi ต้องยาวอย่างน้อย 8 ตัว";
+  } else if (ssid.length()) {
+    int at = -1;
+    for (int j = 0; j < n; j++) if (ns[j] == ssid) at = j;
+    if (at >= 0) {
+      if (open) np[at] = "";
+      else if (pass.length()) np[at] = pass;
+    } else if (n >= NET_SLOTS) {
+      problem = "จำ Wi-Fi ได้ " + String(NET_SLOTS) + " วง ติ๊กลบวงที่ไม่ใช้ก่อนเพิ่มวงใหม่";
+    } else if (!open && pass.length() == 0) {
+      problem = "ใส่รหัส Wi-Fi หรือติ๊กว่า Wi-Fi นี้ไม่มีรหัส";
+    } else {
+      ns[n] = ssid;
+      np[n] = open ? String("") : pass;
+      n++;
+    }
+  }
+  if (problem.length() == 0) {
+    if (n == 0) problem = "ยังไม่ได้เลือกหรือใส่ชื่อ Wi-Fi";
+    else if (!(url.startsWith("http://") || url.startsWith("https://")) || url.length() > 200) problem = "ที่อยู่เซิร์ฟเวอร์ต้องขึ้นต้นด้วย http:// หรือ https://";
+    else if (period < (long)NET_PERIOD_MIN_MS || period > (long)NET_PERIOD_MAX_MS) problem = "ช่วงเวลาส่งค่าต้องอยู่ระหว่าง 100 ถึง 60000 มิลลิวินาที";
+  }
+
+  String h = netPageHead("ตั้งค่าหูฟัง C7");
+  if (problem.length()) {
+    h += "<h1>ยังบันทึกไม่ได้</h1><div class=\"box\">" + problem + "</div><p><a href=\"/\">กลับไปแก้</a></p></body></html>";
+    netServer.send(400, "text/html; charset=utf-8", h);
+    return;
+  }
+
+  netPrefs.begin("c7net", false);
+  for (int i = 0; i < NET_SLOTS; i++) {
+    netPrefs.putString(netKey("ssid", i).c_str(), i < n ? ns[i] : String(""));
+    netPrefs.putString(netKey("pass", i).c_str(), i < n ? np[i] : String(""));
+  }
+  netPrefs.putString("url", url);
+  if (key.length()) netPrefs.putString("key", key);
+  netPrefs.putString("name", cleanText(netServer.arg("name"), 60));
+  netPrefs.putUInt("period", (uint32_t)period);
+  netPrefs.end();
+
+  String names;
+  for (int i = 0; i < n; i++) names += String(i ? ", " : "") + "\"" + htmlEscape(ns[i]) + "\"";
+  h += "<h1>บันทึกแล้ว</h1><div class=\"box\">บอร์ดกำลังเริ่มใหม่และต่อ Wi-Fi ที่บันทึกไว้: " + names +
+       " ถ้าต่อไม่ได้ภายใน 20 วินาที Wi-Fi ชื่อ C7-Setup จะกลับมาให้ตั้งค่าใหม่</div></body></html>";
+  netSendPage(h);
+  logStep("NET settings saved (" + String(n) + " Wi-Fi) -> restarting");
+  netRestartAtMs = millis() + 1500;
+}
+
+void netHandleNotFound() {
+  if (netState == NET_PORTAL) {
+    netServer.sendHeader("Location", "http://" + WiFi.softAPIP().toString() + "/");
+    netServer.send(302, "text/plain", "");
+  } else {
+    netServer.send(404, "text/plain", "not found");
+  }
+}
+
+// Task แยกบน core 0: ดึงตัวอย่างจากคิวแล้ว POST เป็นชุด ส่งไม่สำเร็จ = ทิ้งชุดนั้น (ไม่สะสมค่าเก่า)
+void netUploadTask(void *arg) {
+  static NetSample batch[NET_BATCH_MAX];
+  WiFiClientSecure tls;
+  WiFiClient plain;
+  HTTPClient http;
+  tls.setInsecure();        // ไม่ตรวจใบรับรองของเซิร์ฟเวอร์ (ต้นแบบ) ข้อมูลยังเข้ารหัสระหว่างทาง
+  http.setReuse(true);      // ใช้การเชื่อมต่อเดิมซ้ำ ไม่ต้องเริ่ม TLS ใหม่ทุกวินาที
+  const bool https = cfgUrl.startsWith("https://");
+
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(NET_POST_INTERVAL_MS));
+    if (netState != NET_ONLINE || WiFi.status() != WL_CONNECTED || cfgUrl.length() == 0) continue;
+
+    int n = 0;
+    while (n < NET_BATCH_MAX && xQueueReceive(netQueue, &batch[n], 0) == pdTRUE) n++;
+    if (n == 0) continue;
+
+    String body;
+    body.reserve(220 + n * 170);
+    body = "{\"device_uid\":\"" + deviceUid + "\",\"firmware\":\"" + String(FIRMWARE_TAG) + "\"";
+    if (cfgName.length()) body += ",\"name\":\"" + cfgName + "\"";
+    body += ",\"boot_id\":" + String(bootId) + ",\"protocol_version\":2,\"geometry_id\":" + String(CVA_GEOMETRY_ID) + ",\"samples\":[";
+    const unsigned long nowMs = millis();
+    for (int i = 0; i < n; i++) {
+      const NetSample &s = batch[i];
+      if (i) body += ',';
+      body += "{\"seq\":" + String(s.seq) + ",\"age_ms\":" + String((unsigned long)(nowMs - s.ms)) +
+              ",\"cal\":" + String(s.calibrationId) + ",\"sensors\":" + String(s.sensors) +
+              ",\"valid\":" + String(s.valid ? "true" : "false");
+      if (s.valid) {
+        body += ",\"head_pitch\":" + String(s.pitch, 2) + ",\"head_roll\":" + String(s.roll, 2) +
+                ",\"head_yaw\":" + String(s.yaw, 2) +
+                ",\"mpu_tilt\":" + (s.tiltOk ? String(s.tilt, 2) : String("null")) +
+                ",\"cva_angle\":" + String(s.cva, 2);
+      }
+      body += '}';
+    }
+    body += "]}";
+
+    int code = -1;
+    const bool began = https ? http.begin(tls, cfgUrl) : http.begin(plain, cfgUrl);
+    if (began) {
+      http.setConnectTimeout(5000);
+      http.setTimeout(5000);
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("X-C7-Key", cfgKey);
+      code = http.POST(body);
+      http.end();
+    }
+    netLastCode = code;
+    if (code == 200) netSentCount += n;
+    else netFailCount += n;
+  }
+}
+
+void netSetup() {
+  char uid[20];
+  const uint64_t mac = ESP.getEfuseMac();
+  snprintf(uid, sizeof(uid), "c7-%02x%02x%02x%02x%02x%02x",
+           (uint8_t)(mac), (uint8_t)(mac >> 8), (uint8_t)(mac >> 16),
+           (uint8_t)(mac >> 24), (uint8_t)(mac >> 32), (uint8_t)(mac >> 40));
+  deviceUid = uid;
+  netLoadConfig();
+  logStep("NET device_uid=" + deviceUid + " firmware=" + String(FIRMWARE_TAG) + " url=" + cfgUrl +
+          " period=" + String(cfgPeriodMs) + "ms key=" + String(cfgKey.length() ? "set" : "not set") +
+          " saved_wifi=" + String(netSavedCount()));
+
+  WiFi.persistent(false);   // ค่า Wi-Fi เก็บใน NVS ของเราเอง ไม่ให้ไลบรารีเขียน flash ซ้ำ
+  netQueue = xQueueCreate(NET_QUEUE_LEN, sizeof(NetSample));
+
+  if (netSavedCount()) netStartStation();
+  else netStartPortal("no Wi-Fi saved yet");
+
+  netServer.on("/", HTTP_GET, netHandleRoot);
+  netServer.on("/save", HTTP_POST, netHandleSave);
+  netServer.on("/scan", HTTP_GET, netHandleScan);
+  netServer.onNotFound(netHandleNotFound);
+  netServer.begin();
+
+  if (netQueue) xTaskCreatePinnedToCore(netUploadTask, "c7-upload", 12288, nullptr, 1, nullptr, 0);
+}
+
+// เรียกทุกรอบ loop(): หน้าเว็บของบอร์ด, สถานะ Wi-Fi, เก็บตัวอย่างลงคิว
+void netLoop(unsigned long nowMs, bool valid, bool leftFresh, bool rightFresh, bool c7Fresh) {
+  netServer.handleClient();
+  if (netState == NET_PORTAL) netDns.processNextRequest();
+  if (netRestartAtMs && (long)(nowMs - netRestartAtMs) >= 0) ESP.restart();
+
+  const bool linked = (WiFi.status() == WL_CONNECTED);
+  if (netState == NET_CONNECTING && netPicking) {
+    // รอผลสแกน แล้วต่อวงที่บันทึกไว้ซึ่งสัญญาณแรงที่สุด
+    if (WiFi.scanComplete() != WIFI_SCAN_RUNNING) {
+      const int slot = netPickNext();
+      if (slot >= 0) netBeginSlot(slot);
+      else netStartPortal("no saved Wi-Fi to try");
+    } else if (nowMs - netStateSinceMs >= NET_CONNECT_TIMEOUT_MS) {
+      netBeginSlot(0);
+    }
+  } else if (netState == NET_CONNECTING) {
+    if (linked) {
+      netState = NET_ONLINE;
+      netStateSinceMs = nowMs;
+      logStep("NET Wi-Fi connected ip=" + WiFi.localIP().toString() + " rssi=" + String(WiFi.RSSI()) + "dBm");
+    } else if (nowMs - netStateSinceMs >= NET_CONNECT_TIMEOUT_MS) {
+      const int slot = (netSavedCount() > 1) ? netPickNext() : -1;   // ลองวงถัดไปที่บันทึกไว้
+      if (slot >= 0) {
+        logStep("NET could not join \"" + cfgSsid + "\" -> trying the next saved Wi-Fi");
+        WiFi.disconnect();
+        netBeginSlot(slot);
+      } else {
+        netStartPortal("could not join any saved Wi-Fi");
+      }
+    }
+  } else if (netState == NET_ONLINE) {
+    if (linked) {
+      netLostSinceMs = 0;
+    } else if (netLostSinceMs == 0) {
+      netLostSinceMs = nowMs;
+      logStep("NET Wi-Fi lost -> reconnecting");
+    } else if (nowMs - netLostSinceMs >= NET_LOST_TIMEOUT_MS) {
+      if (netSavedCount() > 1) netStartStation();   // มีวงอื่นให้ลอง: สแกนเลือกใหม่
+      else netStartPortal("Wi-Fi lost for 60 s");
+    }
+  } else if (netState == NET_PORTAL) {
+    // มี Wi-Fi ที่บันทึกไว้และไม่มีใครต่อเข้ามาตั้งค่า -> ลองต่อ Wi-Fi เดิมอีกครั้ง (เช่น เราเตอร์เพิ่งกลับมา)
+    if (netSavedCount() && netRestartAtMs == 0 && WiFi.softAPgetStationNum() == 0 &&
+        nowMs - netStateSinceMs >= NET_PORTAL_RETRY_MS) {
+      netStartStation();
+    }
+  }
+
+  if (netState == NET_ONLINE && linked && netQueue && nowMs - lastNetSampleMs >= cfgPeriodMs) {
+    lastNetSampleMs = nowMs;
+    NetSample s;
+    s.seq = netSeq++;
+    s.ms = nowMs;
+    s.calibrationId = calibrationId;
+    s.valid = valid;
+    s.tiltOk = valid && mpuTiltOk;
+    s.pitch = headPitch;
+    s.roll = headRoll;
+    s.yaw = headYaw;
+    s.tilt = mpuTilt;
+    s.cva = cvaAngle;
+    s.sensors = (leftFresh ? 1 : 0) | (rightFresh ? 2 : 0) | (c7Fresh ? 4 : 0);
+    if (xQueueSend(netQueue, &s, 0) != pdTRUE) netDropCount++;
+  }
+
+  if (nowMs - lastNetStatusMs >= NET_STATUS_LOG_MS) {
+    lastNetStatusMs = nowMs;
+    String line = String("NET ") + netStateName();
+    if (netState == NET_ONLINE) line += " ip=" + WiFi.localIP().toString() + " rssi=" + String(WiFi.RSSI()) + "dBm";
+    line += " sent=" + String(netSentCount) + " fail=" + String(netFailCount) + " drop=" + String(netDropCount) +
+            " http=" + String(netLastCode);
+    logStep(line);
+  }
+}
+
 void setup() {
   WiFi.mode(WIFI_OFF);
   btStop();
@@ -1215,6 +1792,9 @@ void setup() {
     logStep("C7(0x68) NO_ACK");
   }
 
+  // เปิด Wi-Fi หลังเซ็นเซอร์พร้อมแล้ว (ถ้ายังไม่เคยตั้งค่าจะเข้าโหมดตั้งค่า)
+  netSetup();
+
   lastHealthCheckMs = millis();
   logStep("STEP 6/6: SETUP COMPLETE -> Entering loop() now!");
 }
@@ -1228,6 +1808,15 @@ void loop() {
     autoZeroDone = false;
     lastButtonCalibMs = nowPoll;
     logStep("BOOT button pressed -> re-zeroing");
+  }
+  // กด BOOT ค้าง 3 วินาที = เข้าโหมดตั้งค่า Wi-Fi (กดสั้นยังเป็นการตั้งศูนย์เหมือนเดิม)
+  if (bootPressed && !previousBootPressed) {
+    bootPressStartMs = nowPoll;
+    bootHoldHandled = false;
+  }
+  if (bootPressed && !bootHoldHandled && nowPoll - bootPressStartMs >= NET_BOOT_HOLD_MS) {
+    bootHoldHandled = true;
+    if (netState != NET_PORTAL) netStartPortal("BOOT button held");
   }
   previousBootPressed = bootPressed;
 
@@ -1246,6 +1835,9 @@ void loop() {
       setCollectMode(true);
     } else if (cmd == 'n' || cmd == 'N') {
       setCollectMode(false);
+    } else if (cmd == 'w' || cmd == 'W') {
+      if (netState != NET_PORTAL) netStartPortal("Serial command 'w'");
+      else logStep("NET already in setup mode");
     }
   }
 
@@ -1395,6 +1987,9 @@ void loop() {
 
     cvaAngle = round2Dec(calculateCVA(mpuTiltOk, mpuTilt, headPitch));
   }
+
+  // 4.1 Wi-Fi: หน้าตั้งค่าของบอร์ด, สถานะการเชื่อมต่อ, เก็บตัวอย่างลงคิวให้ task ส่งข้อมูล
+  netLoop(nowMs, valid, leftFresh, rightFresh, c7Fresh);
 
   // 5. ส่ง [ESP-LOG] สรุปสถานะช่วงบูต 8 วินาทีแรก หรือเมื่อยังไม่มีสัญญาณสด
   if ((!valid || nowMs < 8000) && (nowMs - lastDiagLogMs >= DIAG_LOG_MS)) {

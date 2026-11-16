@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/three/OrbitControls.js';
 import { bno085, esp32, gy521, tp4056, mt3608, lipo, qwiicAdapter } from './wiring-boards.js';
-import { UNITS, C7, C7_WIRES, C7_CABLES, BOARD, JUMPER, pinAt, boardXY, hardware } from './structure-layout.js';
+import { UNITS, C7, C7_WIRES, C7_CABLES, BOARD, JUMPER, EAR_CABLE, pinAt, boardXY, hardware } from './structure-layout.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = $('stage'), canvas = $('c');
@@ -66,14 +66,13 @@ for (const n of Object.values(NET)) n.mat = phys({ color: n.color, roughness: 0.
 const OFF = {
   c7: { clampScrew: -72, clamp: -52, strip: -28, base: 0, floor: 26, tray: 54, trayScrew: 68, board: 86, boardScrew: 102, lid: 130, lidScrew: 158 },
   pod: { velcro: -10, base: 0, clamp: 9, clampScrew: 15, board: 13, boardScrew: 21, lid: 32 },
-  joint: { base: 0, board: 11, lid: 26, lidScrew: 38 },
 };
-const AT = { c7: V(0, 0, 0), jointL: V(-150, 150, 0), jointR: V(150, 150, 0), podL: V(-230, 290, 0), podR: V(230, 290, 0) };
-const KIND = { c7: 'c7', jointL: 'joint', jointR: 'joint', podL: 'pod', podR: 'pod' };
-const DATA = { c7: C7, jointL: UNITS.joint, jointR: UNITS.joint, podL: UNITS.podL, podR: UNITS.podR };
+const AT = { c7: V(0, 0, 0), podL: V(-120, 175, 0), podR: V(120, 175, 0) };
+const KIND = { c7: 'c7', podL: 'pod', podR: 'pod' };
+const DATA = { c7: C7, podL: UNITS.podL, podR: UNITS.podR };
 const unitGroups = {}, items = [], pickables = [];
 for (const [k, p] of Object.entries(AT)) { const g = new THREE.Group(); g.position.copy(p); scene.add(g); unitGroups[k] = g; }
-const st = { focus: 'c7', e: 0, goal: 0, xray: true, hideLid: false, wires: true, sel: null, view: 'vIso' };
+const st = { focus: 'c7', e: 0, goal: 0, xray: true, hideLid: false, wires: true, labels: true, sel: null, view: 'vIso' };
 function reg(obj, unit, level, part) {
   obj.userData.z0 = obj.position.z; obj.userData.level = level; obj.userData.unit = unit;
   obj.traverse((o) => { o.userData.part = part; o.userData.unitKey = unit; if (o.isMesh) pickables.push(o); });
@@ -140,8 +139,7 @@ function buildC7() {
   const base = shellGroup(u, cuts, MAT.shell);
   for (const p of u.posts) base.add(cyl(u.postR, u.tray.z, MAT.mount, p.x, p.y, u.tray.z / 2));
   for (const [x0, y0, x1, y1] of u.batteryRibs) {
-    const segs = x1 - x0 > 10 ? [[x0, 22], [27, x1]] : [[x0, x1]];   // wire notch in the long rib
-    for (const [a, b] of segs) base.add(box(b - a, y1 - y0, 6, MAT.mount, (a + b) / 2, (y0 + y1) / 2, 3));
+    base.add(box(x1 - x0, y1 - y0, u.ribH, MAT.mount, (x0 + x1) / 2, (y0 + y1) / 2, u.ribH / 2));
   }
   for (const id of ['tp', 'mt']) {
     const p = by[id], [x0, y0, , x1, y1] = p.box, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, long = x1 - x0 > y1 - y0;
@@ -155,7 +153,7 @@ function buildC7() {
     }
   }
   const sw = by.sw.box;
-  base.add(box(1.2, 4.3, 4, MAT.mount, sw[0] - 0.6, -25.85, 2), box(1.2, 4.3, 4, MAT.mount, sw[3] + 0.6, -25.85, 2), box(4, 1.2, 3, MAT.mount, 27.6, sw[4] + 0.6, 1.5));
+  base.add(box(1.2, 4.3, 4, MAT.mount, sw[0] - 0.6, -25.85, 2), box(1.2, 4.3, 4, MAT.mount, sw[3] + 0.6, -25.85, 2), box(4, 1.2, 3, MAT.mount, (sw[0] + sw[3]) / 2 + 2.3, sw[4] + 0.6, 1.5));
   const cl = u.clamp;
   for (const s of [-1, 1]) base.add(box(cl.railL, cl.railW, cl.railH, MAT.shell, 0, s * (cl.railY + cl.railW / 2), -u.floor - cl.railH / 2));
   reg(base, 'c7', 'base', 'base');
@@ -166,7 +164,7 @@ function buildC7() {
   const clamp = new THREE.Group(), zp = zs - cl.railH;
   clamp.add(slab(rrShape(cl.plate[0], cl.plate[1], 3), cl.plate[2], MAT.lid, zp - cl.plate[2]), slab(rrShape(cl.plate[0], cl.plate[1], 3), cl.pad, MAT.foam, zp - cl.plate[2] - cl.pad));
   reg(clamp, 'c7', 'clamp', 'clamp');
-  for (const [x, y] of cl.screws) reg(screw(3, 9, x, y, zp - cl.plate[2] + 0.4, true), 'c7', 'clampScrew', 'clamp');
+  for (const [x, y] of cl.screws) reg(screw(3, cl.screwLen, x, y, zp - cl.plate[2] + 0.4, true), 'c7', 'clampScrew', 'clamp');
 
   // floor level: power boards, battery, switch
   for (const id of ['mt', 'tp', 'bat']) reg(boardAt(by[id], true), 'c7', 'floor', id);
@@ -236,28 +234,6 @@ function buildPod(key) {
   reg(lid, key, 'lid', 'podLid' + id);
 }
 
-// ---------- mid-cable joint case ----------
-function buildJoint(key) {
-  const u = DATA[key], D = u.in.d, W = u.in.w, a = u.parts[0];
-  const end = [{ u0: 1.8 - 1.9, u1: 1.8 + 1.9, z0: 1.4, z1: D }];
-  const base = shellGroup(u, { left: end, right: end }, MAT.shell);
-  for (const [x, y] of cornersOf(a)) {
-    base.add(box(2.4, 2.4, a.at[2], MAT.mount, x - Math.sign(x) * 1.2, y - Math.sign(y) * 1.2, a.at[2] / 2));          // ledges under the corners
-    base.add(box(1.2, 3, 4.6, MAT.mount, x + Math.sign(x) * 0.7, y - Math.sign(y) * 1.5, 2.3));                         // guides around the board
-  }
-  for (const sx of [-1, 1]) base.add(cyl(0.9, 5, MAT.mount, sx * 16.2, 4.9, 2.5), cyl(0.9, 5, MAT.mount, sx * 18.6, -1.3, 2.5));   // pegs the cable snakes past
-  for (const [x, y] of u.screws) base.add(cyl(1.7, D, MAT.mount, x, y, D / 2));
-  base.add(box(26, 10, 1.2, MAT.shell, 0, 0, -u.floor - 3.4), box(4, 10, 3, MAT.shell, -11, 0, -u.floor - 1.5));           // clip on the back
-  reg(base, key, 'base', 'jointBase');
-  reg(boardAt(a, true), key, 'board', 'cpl');
-  const lid = new THREE.Group();
-  lid.add(slab(rrShape(u.out.w, u.out.h, 2.2), u.lid, MAT.lid, D));
-  for (const sx of [-1, 1]) lid.add(box(1.4, 8, D - (a.at[2] + 1.6) - 0.1, MAT.lid, sx * 3.5, -2, D - (D - a.at[2] - 1.6) / 2));   // ribs that hold the board down
-  reg(lid, key, 'lid', 'jointLid');
-  for (const [x, y] of u.screws) reg(screw(2, 8, x, y, D + u.lid), key, 'lidScrew', 'jointLid');
-  void W;
-}
-
 // ---------- wires and cables: rebuilt whenever the layers move ----------
 const wireGroup = new THREE.Group(); scene.add(wireGroup);
 const byC7 = Object.fromEntries(C7.parts.map((p) => [p.id, p]));
@@ -269,37 +245,29 @@ function definePaths() {
   // conductors inside the C7 box
   C7_WIRES.forEach((w, i) => {
     const A = c7Pin(w.a), B = c7Pin(w.b), pts = [A];
-    if (w.via) for (const [x, y, z] of w.via) pts.push(pt('c7', 'floor', x, y, z));
+    if (w.via) for (const [x, y, z] of w.via) pts.push(pt('c7', w.viaLevel || 'floor', x, y, z));
     else {   // jumpers hang under the tray: leave the housing, swing through the lower level, come back up
       const d = B.p.clone().sub(A.p).setZ(0).normalize(), side = V(-d.y, d.x, 0), k = (i % 4) - 1.5;
-      pts.push(pt('c7', 'tray', A.p.x + d.x * 4, A.p.y + d.y * 4, 6.3));
-      const m = A.p.clone().lerp(B.p, 0.5).addScaledVector(side, k * 1.6); pts.push(pt('c7', 'tray', m.x, m.y, 11 + Math.abs(k)));
-      pts.push(pt('c7', 'tray', B.p.x - d.x * 4, B.p.y - d.y * 4, 6.3));
+      pts.push(pt('c7', 'tray', A.p.x + d.x * 4, A.p.y + d.y * 4, 10));   // above the battery (top at 8.3), below the tray
+      const m = A.p.clone().lerp(B.p, 0.5).addScaledVector(side, k * 1.6); pts.push(pt('c7', 'tray', m.x, m.y, 13 + Math.abs(k)));
+      pts.push(pt('c7', 'tray', B.p.x - d.x * 4, B.p.y - d.y * 4, 10));
     }
     pts.push(B);
     PATHS.push({ cable: w.cable, mat: NET[w.net].mat, r: 0.6, pts });
   });
   // Qwiic cables: one tube each (four conductors inside)
-  const zq = C7.zBoard + 1.6 + 1.45, qA = pinAt(byC7.hubA, 'QA'), qB = pinAt(byC7.hubA, 'QB'), rA = pinAt(byC7.hubB, 'QA'), rB = pinAt(byC7.hubB, 'QB');
-  const link = [pt('c7', 'board', qB[0], qB[1], zq), pt('c7', 'board', qB[0] + 2.5, qB[1], zq)];
-  for (let i = 1; i < 8; i++) { const t = i / 8; link.push(pt('c7', 'board', qB[0] + C7.link.gap * t, qB[1] - C7.link.sag * 4 * t * (1 - t), zq)); }
-  link.push(pt('c7', 'board', rA[0] - 2.5, rA[1], zq), pt('c7', 'board', rA[0], rA[1], zq));
+  const zq = C7.zBoard + 1.6 + 1.45;
+  const link = C7.link.path.map(([x, y]) => pt('c7', 'board', x, y, zq));
   PATHS.push({ cable: 'link', mat: MAT.cable, r: 1.3, pts: link, plugs: [[link[0], 1], [link[link.length - 1], -1]] });
-  for (const [side, sx, sock, jk, pk] of [['earL', -1, qA, 'jointL', 'podL'], ['earR', 1, rB, 'jointR', 'podR']]) {
-    const gx = sx * 42.5, top = C7.in.h / 2, ju = UNITS.joint, po = DATA[pk], s = po.s;
-    const jq = (e) => pinAt(ju.parts[0], e > 0 ? 'QB' : 'QA');      // joint socket on the end facing +x or -x
-    const toC7 = -sx, toPod = sx, a1 = jq(toC7), a2 = jq(toPod), ex = ju.in.w / 2;
-    // segment 1: adapter in the C7 box -> out through the notch in the top wall -> joint case
-    const s1 = [pt('c7', 'board', sock[0], sock[1], zq), pt('c7', 'board', sock[0] + sx * 3, sock[1], zq), pt('c7', 'board', gx, sock[1] + 3.2, zq),
-      pt('c7', 'base', gx, top - 1.5, zq), pt('c7', 'base', gx, top + 4, zq), pt('c7', 'base', gx + sx * 6, top + 26, 14),
-      pt(jk, 'base', toC7 * (ex + 12), 1.8, 4), pt(jk, 'base', toC7 * (ex + 1), 1.8, 4), pt(jk, 'base', toC7 * 17.4, 1.9, 4), pt(jk, 'board', a1[0] + toC7 * 2.5, a1[1], a1[2]), pt(jk, 'board', a1[0], a1[1], a1[2])];
-    PATHS.push({ cable: side, mat: MAT.cable, r: 1.3, pts: s1, plugs: [[s1[0], -sx], [s1[s1.length - 1], -toC7]], ties: [pt('c7', 'base', gx, top - 2.6, zq)] });
-    // segment 2: joint case -> pod, in through the notch at the bottom-back corner, under the clamp, into the socket
+  // one 20 cm cable per ear: adapter in the C7 box -> notch in the top wall -> notch in the pod -> under the clamp -> socket
+  for (const [side, sx, port, pk] of [['earL', -1, C7.ports.earL, 'podL'], ['earR', 1, C7.ports.earR, 'podR']]) {
+    const sock = pinAt(byC7[port[0]], port[1]), gx = sx * 42.5, top = C7.in.h / 2, po = DATA[pk], s = po.s;
     const q = pinAt(po.parts[0], po.socket), zc = 1.5, bottom = -po.in.h / 2;
-    const s2 = [pt(jk, 'board', a2[0], a2[1], a2[2]), pt(jk, 'board', a2[0] + toPod * 2.5, a2[1], a2[2]), pt(jk, 'base', toPod * 17.4, 1.9, 4), pt(jk, 'base', toPod * (ex + 1), 1.8, 4), pt(jk, 'base', toPod * (ex + 12), 6, 4),
-      pt(pk, 'base', po.exit.x, bottom - 26, zc), pt(pk, 'base', po.exit.x, bottom - 2, zc), pt(pk, 'base', po.exit.x, po.clampAt[1], zc), pt(pk, 'base', po.exit.x, -3.5, 2.4),
+    const pts = [pt('c7', 'board', sock[0], sock[1], zq), pt('c7', 'board', sock[0] + sx * 3, sock[1], zq), pt('c7', 'board', gx, sock[1] + 3.2, zq),
+      pt('c7', 'base', gx, top - 1.5, zq), pt('c7', 'base', gx, top + 4, zq), pt('c7', 'base', gx + sx * 12, top + 34, 14),
+      pt(pk, 'base', po.exit.x, bottom - 30, zc), pt(pk, 'base', po.exit.x, bottom - 2, zc), pt(pk, 'base', po.exit.x, po.clampAt[1], zc), pt(pk, 'base', po.exit.x, -3.5, 2.4),
       pt(pk, 'board', q[0] + s * 4, q[1], q[2]), pt(pk, 'board', q[0], q[1], q[2])];
-    PATHS.push({ cable: side, mat: MAT.cable, r: 1.3, pts: s2, plugs: [[s2[0], -toPod], [s2[s2.length - 1], -s]] });
+    PATHS.push({ cable: side, mat: MAT.cable, r: 1.3, pts, plugs: [[pts[0], -sx], [pts[pts.length - 1], -s]], ties: [pt('c7', 'base', gx, top - 2.6, zq)] });
   }
 }
 const plugGeo = new THREE.BoxGeometry(3.4, 4.6, 2.4), tieGeo = new THREE.TorusGeometry(1.9, 0.5, 8, 20).rotateX(Math.PI / 2);
@@ -318,14 +286,14 @@ function rebuildWires() {
 // ---------- state -> scene ----------
 function applyExplode() {
   for (const o of items) o.position.z = o.userData.z0 + lift(o.userData.unit, o.userData.level);
-  rebuildWires(); updateSel(); dirty = true;
+  rebuildWires(); updateSel(); measureLabels(); dirty = true;
 }
 function applyLook() {
   for (const [m, a] of [[MAT.shell, 0.3], [MAT.lid, 0.16], [MAT.tray, 0.5]]) { m.transparent = st.xray; m.opacity = st.xray ? a : 1; m.depthWrite = !st.xray; m.needsUpdate = true; }
   for (const o of items) if (o.userData.level === 'lid' || o.userData.level === 'lidScrew') o.visible = !st.hideLid;
-  wireGroup.visible = st.wires; dirty = true;
+  wireGroup.visible = st.wires; measureLabels(); dirty = true;
 }
-const FOCUS = { fOver: ['over', V(0, 145, 10), 900], fC7: ['c7', V(0, 0, 14), 340], fJoint: ['jointL', AT.jointL.clone().add(V(0, 0, 4)), 170], fPodL: ['podL', AT.podL.clone().add(V(0, 0, 4)), 150], fPodR: ['podR', AT.podR.clone().add(V(0, 0, 4)), 150] };
+const FOCUS = { fOver: ['over', V(0, 90, 10), 620], fC7: ['c7', V(0, 0, 14), 340], fPodL: ['podL', AT.podL.clone().add(V(0, 0, 4)), 150], fPodR: ['podR', AT.podR.clone().add(V(0, 0, 4)), 150] };
 const VIEWS = { vIso: V(-0.42, -0.5, 0.76), vFront: V(0, -0.02, 1), vSide: V(1, 0, 0.06), vTop: V(0, 1, 0.08), vBack: V(0, -0.02, -1) };
 function setCamera() {
   const [, target, dist] = Object.values(FOCUS).find((f) => f[0] === st.focus);
@@ -365,7 +333,7 @@ function updateSel() {
   }
   selHelper.visible = !selBox.isEmpty();
 }
-const selUnit = () => { const p = allParts[st.sel]; if (!p) return null; return p.unitKey === 'jointL' || p.unitKey === 'jointR' ? (st.focus === 'jointR' ? 'jointR' : 'jointL') : p.unitKey; };
+const selUnit = () => { const p = allParts[st.sel]; return p ? p.unitKey : null; };
 function select(id) {
   st.sel = id && (allParts[id] || CABLE_INFO[id]) ? id : null;
   showInfo(st.sel); updateSel();
@@ -377,11 +345,11 @@ function renderTables() {
   const t = $('partsTable'); t.innerHTML = '';
   const head = (tbl, cols) => { const hr = tbl.insertRow(); for (const x of cols) { const th = document.createElement('th'); th.textContent = x; hr.appendChild(th); } };
   head(t, ['ชิ้น', 'ยึดด้วย']);
-  const keys = st.focus === 'over' ? ['c7', 'jointL', 'podL', 'podR'] : [st.focus];
+  const keys = st.focus === 'over' ? ['c7', 'podL', 'podR'] : [st.focus];
   const order = ['lid', 'board', 'tray', 'floor', 'clamp', 'base', 'strip'];
   for (const k of keys) {
     const u = DATA[k], g = t.insertRow().insertCell(); g.colSpan = 2; g.className = 'grp';
-    g.textContent = `${u.name}${k === 'jointL' ? ' (ซ้ายและขวาเหมือนกัน)' : ''} · ${u.out.w} × ${u.out.h} × ${u.out.d.toFixed(1).replace('.0', '')} มม.`;
+    g.textContent = `${u.name} · ${u.out.w} × ${u.out.h} × ${u.out.d.toFixed(1).replace('.0', '')} มม.`;
     const list = [...u.shell, ...u.parts].sort((a, b) => order.indexOf(a.level) - order.indexOf(b.level));
     for (const p of list) {
       const tr = t.insertRow(); tr.className = 'pick'; tr.dataset.id = p.id; tr.tabIndex = 0;
@@ -418,7 +386,7 @@ function showSize() {
 // ---------- picking ----------
 const pick = new THREE.Raycaster(), ndc = new THREE.Vector2();
 const shown = (o) => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
-const SEE_THROUGH = new Set(['base', 'lid', 'tray', 'podBaseL', 'podBaseR', 'podLidL', 'podLidR', 'jointBase', 'jointLid']);
+const SEE_THROUGH = new Set(['base', 'lid', 'tray', 'podBaseL', 'podBaseR', 'podLidL', 'podLidR']);
 let downAt = null;
 canvas.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
 canvas.addEventListener('pointerup', (e) => {
@@ -444,11 +412,113 @@ $('sExp').addEventListener('input', (e) => { st.goal = st.e = e.target.value / 1
 $('xray').onchange = (e) => { st.xray = e.target.checked; applyLook(); };
 $('hideLid').onchange = (e) => { st.hideLid = e.target.checked; applyLook(); updateSel(); };
 $('wires').onchange = (e) => { st.wires = e.target.checked; applyLook(); };
+$('labelsOn').onchange = (e) => { st.labels = e.target.checked; dirty = true; };
+
+// ---------- name labels on every part (toggle). A label sits near its part; a thin line joins the two. ----------
+const SHORT = {
+  base: 'ฐานกล่อง', tray: 'ถาดบอร์ด', lid: 'ฝากล่อง', clamp: 'แผ่นหนีบแถบ', strip: 'แถบพาดบ่า',
+  bat: 'แบต LiPo', mt: 'MT3608', tp: 'TP4056', sw: 'สวิตช์', esp: 'ESP32', hubA: 'Adapter 1', hubB: 'Adapter 2', mpu: 'GY-521',
+  bnoL: 'BNO085 ซ้าย', bnoR: 'BNO085 ขวา', podBaseL: 'ฐานตลับ', podBaseR: 'ฐานตลับ', podLidL: 'ฝาตลับ', podLidR: 'ฝาตลับ', podClampL: 'แคลมป์รัดสาย', podClampR: 'แคลมป์รัดสาย',
+};
+const labelLayer = $('labels'), leaderSvg = $('leaders'), labels = [];
+for (const [unit, u] of Object.entries(DATA)) for (const p of [...u.shell, ...u.parts]) {
+  const el = document.createElement('button'); el.type = 'button'; el.className = 'lbl'; el.textContent = SHORT[p.id] || p.name; el.hidden = true;
+  el.onclick = () => select(p.id);
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  labelLayer.appendChild(el); leaderSvg.appendChild(line);
+  labels.push({ unit, id: p.id, level: p.level, el, line, box: new THREE.Box3(), w: 0 });
+}
+const labelOf = new Map(labels.map((l) => [l.unit + '|' + l.id, l]));
+// boxes change only when layers move or parts are hidden, not when the camera moves
+function measureLabels() {
+  scene.updateMatrixWorld(true);
+  for (const l of labels) l.box.makeEmpty();
+  for (const o of pickables) { const l = labelOf.get(o.userData.unitKey + '|' + o.userData.part); if (l && shown(o)) l.box.expandByObject(o); }
+}
+const anchor = V(), mid = V();
+function placeLabels() {
+  const W = stage.clientWidth, H = stage.clientHeight, placed = [], h = 20;
+  for (const l of labels) {
+    let ok = st.labels && (st.focus === 'over' || l.unit === st.focus) && !l.box.isEmpty();
+    if (ok) {
+      const b = l.box; b.getCenter(mid);
+      // shell pieces are labelled at a corner so they do not sit on top of the boards inside them
+      if (l.level === 'base') anchor.set(b.min.x + 4, b.min.y + 2, mid.z);
+      else if (l.level === 'lid') anchor.set(b.max.x - 4, b.max.y - 2, b.max.z);
+      else if (l.level === 'tray') anchor.set(b.max.x - 4, b.min.y + 3, b.max.z);
+      else if (l.level === 'strip') anchor.set(b.max.x - 8, mid.y, mid.z);
+      else anchor.set(mid.x, mid.y, b.max.z);
+      anchor.project(camera);
+      ok = anchor.z < 1 && Math.abs(anchor.x) < 1 && Math.abs(anchor.y) < 1;
+    }
+    l.el.hidden = !ok; l.line.style.display = ok ? '' : 'none';
+    if (!ok) continue;
+    if (!l.w) l.w = l.el.offsetWidth || 60;
+    const ax = (anchor.x + 1) / 2 * W, ay = (1 - anchor.y) / 2 * H, w = l.w;
+    const x = Math.min(W - w / 2 - 4, Math.max(w / 2 + 4, ax)); let y = ay - 16;
+    for (let n = 0; n < 24; n++) {   // move up until it is clear of the labels already placed
+      const hit = placed.find((r) => Math.abs(r.x - x) < (r.w + w) / 2 + 4 && Math.abs(r.y - y) < h + 2);
+      if (!hit) break; y = hit.y - h - 3;
+    }
+    y = Math.max(12, y); placed.push({ x, y, w });
+    l.el.style.left = x + 'px'; l.el.style.top = y + 'px'; l.el.dataset.on = l.id === st.sel ? '1' : '0';
+    l.line.setAttribute('x1', ax); l.line.setAttribute('y1', ay); l.line.setAttribute('x2', x); l.line.setAttribute('y2', y);
+  }
+}
+
+// ---------- pop-up: the whole structure in words. What each part does, and what connects to what. ----------
+const ROLE = {
+  base: 'โครงหลักของกล่อง รับทุกชิ้นไว้ข้างใน มีช่องให้เสียบสาย USB และให้ก้านสวิตช์โผล่',
+  tray: 'แบ่งกล่องเป็น 2 ชั้น: วงจรไฟและแบตอยู่ชั้นล่าง บอร์ดอยู่ชั้นบน ขาบอร์ดและหัวจัมเปอร์ลอดร่องของถาดลงไป',
+  lid: 'ปิดกล่องและกดถาดไว้กับเสา ถอดออกเพื่อเข้าถึงบอร์ด',
+  clamp: 'หนีบแถบพาดบ่าไว้กับหลังกล่อง กล่องจึงอยู่กลางหลังคอ แผ่นรองนุ่มเป็นด้านที่แตะตัว',
+  strip: 'โครงพาดบ่าทั้งสองข้าง รับน้ำหนักกล่อง C7 ดัดให้เข้ารูปบ่าได้',
+  esp: 'ตัวประมวลผลหลัก อ่านเซ็นเซอร์ทั้ง 3 ตัวผ่านบัส I2C คำนวณมุมคอ (ค่าประมาณ) แล้วส่งให้หน้าเว็บทาง micro-USB และจ่ายไฟ 3.3 V ให้เซ็นเซอร์ทุกตัวจากขา 3V3',
+  hubA: 'จุดแยกสายตัวที่ 1 เป็นแผ่นลายทองแดง ไม่มีชิป รับสาย 4 เส้นจาก ESP32 แล้วแยกไปหูซ้าย (สาย 20 ซม. เส้นเดียว) และไป Adapter 2',
+  hubB: 'จุดแยกสายตัวที่ 2 รับบัสต่อจาก Adapter 1 แล้วแยกไป GY-521 และไปหูขวา',
+  mpu: 'เซ็นเซอร์วัดความเอียงของต้นคอ ใช้ประมาณว่าคอยื่นไปข้างหน้าเท่าไร ถ้าไม่มีตัวนี้ ค่ามุมคอจะประมาณจากการก้มศีรษะอย่างเดียว',
+  bat: 'แหล่งไฟเมื่อไม่ได้รับไฟจาก USB ความจุ 1100 mAh',
+  tp: 'ชาร์จแบตจากช่อง USB-C (สูงสุด 1 A ตัดที่ 4.2 V) และมีวงจรป้องกันแบตหมดเกินและลัดวงจร',
+  sw: 'เปิดปิดเครื่อง โดยตัดสายไฟบวกระหว่าง TP4056 กับ MT3608',
+  mt: 'ยกแรงดันแบตเป็น 5 V ให้ ESP32 ต้องตั้งให้ได้ 5.0 V ก่อนต่อ',
+  bnoL: 'เซ็นเซอร์วัดการหมุนของศีรษะที่หูซ้าย (ก้ม เอียง หัน) ที่อยู่ I2C 0x4A',
+  bnoR: 'เซ็นเซอร์วัดการหมุนของศีรษะที่หูขวา ที่อยู่ I2C 0x4B (ตั้งด้วยสายสั้น 3Vo → DI)',
+  podBaseL: 'ยึด BNO085 ให้นิ่งกับฝาครอบหูฟัง ถ้าตลับขยับ ค่าที่วัดจะเพี้ยน', podBaseR: 'ยึด BNO085 ให้นิ่งกับฝาครอบหูฟัง ถ้าตลับขยับ ค่าที่วัดจะเพี้ยน',
+  podLidL: 'ปิดตลับ ลูกศรบนฝาบอกทิศด้านหน้า ใช้ตอนแปะตลับให้หันถูกทาง', podLidR: 'ปิดตลับ ลูกศรบนฝาบอกทิศด้านหน้า ใช้ตอนแปะตลับให้หันถูกทาง',
+  podClampL: 'รับแรงดึงของสาย ไม่ให้แรงไปถึงหัวต่อเล็กบนบอร์ด', podClampR: 'รับแรงดึงของสาย ไม่ให้แรงไปถึงหัวต่อเล็กบนบอร์ด',
+};
+function buildExplain() {
+  const el = (tag, text, parent) => { const n = document.createElement(tag); if (text) n.textContent = text; if (parent) parent.appendChild(n); return n; };
+  const partsEl = $('explainParts'), order = ['board', 'floor', 'tray', 'lid', 'base', 'clamp', 'strip'];
+  for (const k of ['c7', 'podL', 'podR']) {
+    const u = DATA[k];
+    el('h4', `${u.name} · ${u.out.w} × ${u.out.h} × ${+u.out.d.toFixed(1)} มม.`, partsEl);
+    for (const p of [...u.shell, ...u.parts].sort((a, b) => order.indexOf(a.level) - order.indexOf(b.level))) {
+      const dl = el('dl', '', partsEl), row = (a, b) => { if (b) { el('dt', a, dl); el('dd', b, dl); } };
+      const dt = el('dt', '', dl); dt.style.gridColumn = '1 / -1'; dt.style.paddingTop = '8px'; const b = el('b', p.name, dt); b.style.color = 'var(--fg)'; b.style.fontSize = '13.5px';
+      row('หน้าที่', ROLE[p.id]); row('ตำแหน่ง', p.where); row('ยึดด้วย', p.mount); row('ต่อกับ', p.links);
+    }
+  }
+  const wiresEl = $('explainWires');
+  const nm = ([id, pin]) => `${SHORT[id]} ${id === 'sw' ? (pin === 'A' ? 'ขาริม' : 'ขากลาง') : pin.replace(/^GND[LR]$/, 'GND')}`;
+  for (const [cid, [name, route]] of Object.entries(C7_CABLES)) {
+    el('h4', name, wiresEl); el('p', route, wiresEl);
+    const ws = C7_WIRES.filter((w) => w.cable === cid);
+    if (ws.length) { const ul = el('ul', '', wiresEl); for (const w of ws) el('li', `${NET[w.net].name}: ${nm(w.a)} → ${nm(w.b)}`, ul); }
+  }
+}
+function setExplain(open) {
+  $('explain').hidden = !open; $('openExplain').setAttribute('aria-expanded', open);
+  if (open) $('closeExplain').focus(); else $('openExplain').focus();
+}
+$('openExplain').onclick = () => setExplain($('explain').hidden);
+$('closeExplain').onclick = () => setExplain(false);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('explain').hidden) setExplain(false); });
 
 // ---------- loop: render only when something changed ----------
 const tagEl = $('tag'), tmp = V();
 function placeTag() {
-  if (!selHelper.visible) { tagEl.hidden = true; return; }
+  if (!selHelper.visible || (st.labels && allParts[st.sel])) { tagEl.hidden = true; return; }   // the part's own label is highlighted instead
   selBox.getCenter(tmp); tmp.y = selBox.max.y; tmp.project(camera);
   const p = allParts[st.sel], c = CABLE_INFO[st.sel];
   tagEl.textContent = p ? p.name : c[0]; tagEl.hidden = tmp.z > 1;
@@ -470,12 +540,13 @@ function frame(now) {
     applyExplode(); setCamera();
   }
   controls.update();
-  if (dirty) { dirty = false; renderer.render(scene, camera); placeTag(); }
+  if (dirty) { dirty = false; renderer.render(scene, camera); placeTag(); placeLabels(); }
   requestAnimationFrame(frame);
 }
 // board silkscreen is drawn on canvases, so wait for the local fonts first
 try { await Promise.all([document.fonts.load('600 44px "IBM Plex Sans Thai"', 'กขค ABC'), document.fonts.load('700 24px "IBM Plex Mono"', 'ABC 123')]); } catch { /* fall back to system fonts */ }
-buildC7(); for (const k of ['podL', 'podR']) buildPod(k); for (const k of ['jointL', 'jointR']) buildJoint(k);
-definePaths(); resize(); applyLook(); applyExplode(); renderTables(); showSize(); showInfo(null); setCamera();
+buildC7(); for (const k of ['podL', 'podR']) buildPod(k);
+for (const [id, v] of [['earIn', `ราว ${Math.max(EAR_CABLE.inBox.L, EAR_CABLE.inBox.R).toFixed(0)} มม.`], ['earPod', `${EAR_CABLE.inPod} มม.`], ['earOut', `${(EAR_CABLE.outside / 10).toFixed(1)} ซม.`]]) if ($(id)) $(id).textContent = v;
+definePaths(); resize(); applyLook(); applyExplode(); renderTables(); showSize(); showInfo(null); buildExplain(); setCamera();
 window.c7Structure = { st, items, PATHS };
 requestAnimationFrame(frame);

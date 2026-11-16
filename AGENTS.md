@@ -29,7 +29,7 @@
   - CVA เป็นค่าเทียบกับท่าตอนตั้งศูนย์ (firmware บังคับท่าตั้งศูนย์ = 52.05°)
 - **ทิศแกนมีแหล่งความจริงเดียว** คือ [docs/SENSOR_AXES.md](docs/SENSOR_AXES.md): pitch บวก = ก้ม, roll บวก = หูขวาลง, yaw บวก = หันซ้าย
   - หน้าเว็บห้ามสลับหรือกลับเครื่องหมายแกนเอง ถ้าแกนไม่ตรงให้แก้ในเฟิร์มแวร์
-- สูตร CVA (geometry 1, อธิบายใน [docs/FORMULA.md](docs/FORMULA.md)) มีอยู่ 3 ที่: `assets/c7-core.js` (`GEOMETRY`, `cvaParts`), `esp32_c7_prototype.ino` (`calculateCVA`) และ `api/save_angle.php` (`cva_geometry1`)
+- สูตร CVA (geometry 1, อธิบายใน [docs/FORMULA.md](docs/FORMULA.md)) มีอยู่ 3 ที่: `assets/c7-core.js` (`GEOMETRY`, `cvaParts`), `esp32_c7_prototype.ino` (`calculateCVA`) และ `api/cva.php` (`cva_geometry1`, ใช้ทั้ง `save_angle.php` และ `ingest.php`)
   - ถ้าแก้ค่าคงที่หรือเครื่องหมาย ต้องแก้ทุกที่ให้ตรงกัน อัปเดต `refCva()` ใน `scripts/check-web.mjs` และเพิ่ม `GEOMETRY.id` / `CVA_GEOMETRY_ID`
 - ข้อมูลจำลองต้องมีป้าย "ข้อมูลจำลอง" ให้เห็นตลอด ห้ามบันทึกลง API และห้ามแสดงเหมือนเป็นข้อมูลจริง
 - baud ของ USB อยู่ 2 ที่: `SERIAL_BAUD` ในเฟิร์มแวร์ และ `BAUD` ใน `assets/c7-core.js` ต้องตรงกัน
@@ -37,6 +37,9 @@
 - หน้าเว็บต้องทำงานได้แบบออฟไลน์ ไม่ใช้ CDN, framework หรือ build step
   - Three.js และฟอนต์เก็บไว้ในเครื่องที่ `assets/vendor` และ `assets/fonts`
   - ห้ามเพิ่ม `package.json` หรือ dependency โดยไม่ได้ตกลงกันก่อน
+- ทาง Wi-Fi ([docs/WIFI.md](docs/WIFI.md)): รูปแบบ JSON ที่บอร์ดส่งอยู่ 2 ที่ คือ `netUploadTask()` ในเฟิร์มแวร์ และ `api/ingest.php` ถ้าเปลี่ยนต้องแก้ทั้งคู่และ `scripts/check-api.mjs`
+  - ชื่อผู้ใช้ รหัสฐานข้อมูล และ `ingest_key` อยู่ใน `api/config.local.php` เท่านั้น (ไม่เข้า git) ห้ามใส่ในเฟิร์มแวร์ เอกสาร หรือไฟล์ที่ git track
+  - ถ้าเปลี่ยนตาราง ต้องแก้ทั้ง `api/db_schema.sql` (MySQL) และ `c7_ensure_schema()` ใน `api/db.php` (SQLite ของเทสต์)
 - ภาษาไทยต้องเป็น UTF-8 ข้อความบนหน้าเว็บเขียนจากมุมผู้ใช้ ดูหลักใน [docs/DESIGN.md](docs/DESIGN.md)
 
 ## ข้อห้ามและข้อควรระวัง
@@ -60,8 +63,10 @@
 ## คำสั่งที่ใช้บ่อย
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1          # เปิดหน้าเว็บที่ http://127.0.0.1:8090/
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1 -Lan     # เปิดแบบรับจากเครือข่ายด้วย (เครื่องนี้เป็นเซิร์ฟเวอร์ของหูฟัง Wi-Fi, ดู docs/WIFI.md)
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1 -Stop    # ปิด server
 node scripts/check-web.mjs                                                       # เทสต์ c7-core.js + c7-collect.js + structure-layout.js (ตอนนี้ 37 ข้อ)
+node scripts/check-api.mjs                                                       # เทสต์ api/ingest.php + api/devices.php กับ SQLite ชั่วคราว (ตอนนี้ 24 ข้อ)
 git diff --check
 ```
 ต้องมี PHP 8 ขึ้นไปสำหรับ server, Node 18 ขึ้นไปสำหรับเทสต์ และ Chrome หรือ Edge สำหรับ Web Serial
@@ -85,7 +90,7 @@ git diff --check
 | `collect.html`, `assets/collect.js`, `assets/collect.css` | หน้าเก็บข้อมูลดิบ 50 Hz: สถานะ + กราฟ + มุมการหมุน 3 มิติในจอเดียว, ขั้นตอนท่า, ดาวน์โหลด CSV/JSON |
 | `assets/axes-view.js` | แกน x/y/z 3 มิติของเซ็นเซอร์แต่ละตัวในทิศโลก ENU สำหรับหน้า collect (ES module, ต้องเปิดผ่าน http) |
 | `wiring.html`, `assets/wiring.js` | แบบร่าง 3 มิติ: หูฟังครอบหูของผู้ใช้ + ตลับเซ็นเซอร์ข้างหู + โครงพาดบ่าและกล่อง C7 + ผังต่อสายและวงจรแบต (ข้อเสนอ ไม่ต่อ USB) |
-| `structure.html`, `assets/structure.js` | โครงสร้างในกล่อง C7, ตลับข้างหู และกล่องข้อต่อกลางสาย: ตำแหน่ง ที่ยึด ทางเดินสาย ภาพแยกชิ้น (ข้อเสนอ ไม่ต่อ USB) |
+| `structure.html`, `assets/structure.js` | โครงสร้างในกล่อง C7 และตลับข้างหู: ตำแหน่ง ที่ยึด ทางเดินสาย ภาพแยกชิ้น ป้ายชื่อ ป๊อบอัพอธิบาย (ข้อเสนอ ไม่ต่อ USB) |
 | `assets/structure-layout.js` | แหล่งความจริงของขนาดกล่อง ตำแหน่งบอร์ด ที่ยึด และสายในกล่อง หน่วยเป็นมิลลิเมตร ไม่แตะ DOM ใช้ทั้งหน้า structure, หน้า wiring (`fillBox()`) และเทสต์ ถ้าเปลี่ยนขนาดกล่องต้องแก้ `DIM.box` / `DIM.pod` ใน `wiring-models.js` ให้ตรง |
 | `assets/wiring-models.js` | ตัวสร้างโมเดลของหน้า wiring (หูฟัง, ตลับ, โครง C7) ไม่แตะ DOM หน่วยเป็นเซนติเมตร ขนาดอยู่ใน `DIM` |
 | `assets/wiring-boards.js` | โมเดลบอร์ดขนาดจริงของหน้า wiring (silkscreen วาดด้วย canvas, ตำแหน่งขาทุกขา) ถ้าเปลี่ยนขาที่ใช้ต้องตรงกับ `I2C0_SDA_PIN` / `I2C0_SCL_PIN` ในเฟิร์มแวร์ (หน้า wiring ไม่มีมอเตอร์สั่นแล้ว แต่เฟิร์มแวร์ยังมี `HAPTIC_MOTOR_PIN`) |
@@ -93,6 +98,11 @@ git diff --check
 | `assets/c7-core.js` | สูตร CVA, ตรวจ Protocol v2 (รับ v1), เชื่อม USB, ข้อมูลจำลอง |
 | `assets/dev-formula.js` | แผงสูตร CVA ทีละขั้นในหน้า dev (SVG + โมเดล 3 มิติ) |
 | `assets/app.css` | design tokens ที่ใช้ร่วมกัน |
-| `esp32_c7_prototype/esp32_c7_prototype.ino` | เฟิร์มแวร์ ESP32 (SafeBNO085, JSON v2 ที่ 460800 baud 5 Hz, โหมดเก็บข้อมูล `r`/`n` 50 Hz) |
-| `api/*.php` | บันทึกและอ่านค่า (MySQL หรือ CSV) ใช้จากหน้า dev เท่านั้น |
+| `esp32_c7_prototype/esp32_c7_prototype.ino` | เฟิร์มแวร์ ESP32 (SafeBNO085, JSON v2 ที่ 460800 baud 5 Hz, โหมดเก็บข้อมูล `r`/`n` 50 Hz, Wi-Fi ที่ตั้งค่าผ่านหน้าเว็บของบอร์ด + ส่งค่าไป `api/ingest.php`) |
+| `api/save_angle.php`, `api/get_latest.php`, `api/db_init.sql` | บันทึกและอ่านค่า (MySQL หรือ CSV) ใช้จากหน้า dev เท่านั้น |
+| `api/ingest.php`, `api/devices.php`, `api/db.php`, `api/db_schema.sql` | ทาง Wi-Fi: รับค่าจากหลายบอร์ด เก็บลง `c7_devices` (1) → `c7_readings` (หลาย) และอ่านกลับ ตั้งค่าใน `api/config.local.php` (คัดลอกจาก `config.sample.php`) |
+| `api/cva.php` | สูตร CVA ฝั่ง PHP ที่เดียว |
+| `devices.html`, `assets/devices.js`, `assets/devices.css` | หน้าดูหูฟังทุกเครื่องที่ส่งข้อมูลผ่าน Wi-Fi (อ่าน `api/devices.php` ทุก 1 วินาที) |
+| `scripts/serve.ps1`, `scripts/router.php` | เปิด PHP server (โหลด `pdo_sqlite` เอง) `router.php` ปฏิเสธ `.git`, `.local`, `data/`, `scripts/` ถ้าเพิ่มโฟลเดอร์ที่ไม่ควรเปิดให้เครือข่ายเห็น ต้องเพิ่มที่นี่ |
+| `scripts/check-api.mjs` | เทสต์ API ของ Wi-Fi โดยเปิด PHP server เองกับ SQLite ชั่วคราว |
 | `scripts/check-web.mjs` | เทสต์โดยไม่ต้องมี dependency |

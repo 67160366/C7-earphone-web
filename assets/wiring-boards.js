@@ -236,19 +236,19 @@ export function mt3608(o = {}) {
   });
 }
 
-// ---------- LiPo 503035, 3.7 V 500 mAh, 35 x 30 x 5 mm, with its protection board under the tape ----------
+// ---------- LiPo 803040, 3.7 V 1100 mAh, 40 x 30 x 8 mm, with its protection board under the tape ----------
 export function lipo(o = {}) {
   return board({
     bare: o.bare,
-    w: 3.0, h: 3.5, r: 0.14, base: '#b4b9bd', thick: 0.5, metal: 0.8,
-    pins: [{ k: '+', x: 0.3, y: 1.58, hdr: false, z: 0.01, ly: 0.36, lx: 0.25 }, { k: '-', x: -0.3, y: 1.58, hdr: false, z: 0.01, ly: 0.36, lx: -0.25 }],
+    w: 3.0, h: 4.0, r: 0.14, base: '#b4b9bd', thick: 0.8, metal: 0.8,
+    pins: [{ k: '+', x: 0.3, y: 1.83, hdr: false, z: 0.01, ly: 0.36, lx: 0.25 }, { k: '-', x: -0.3, y: 1.83, hdr: false, z: 0.01, ly: 0.36, lx: -0.25 }],
     draw(p) {
-      p.rect(0, 1.45, 3.0, 0.6, '#c98a1a');
-      p.rect(0.3, 1.58, 0.14, 0.14, '#d0312d'); p.rect(-0.3, 1.58, 0.14, 0.14, '#18181a');
-      p.text('+', 0.62, 1.5, 0.2, { color: '#1a1a1a' }); p.text('-', -0.62, 1.5, 0.2, { color: '#1a1a1a' });
-      p.text('LiPo 503035', 0, 0.3, 0.2, { color: '#2a2e31' });
-      p.text('3.7V 500mAh', 0, -0.1, 0.17, { color: '#2a2e31', weight: 500 });
-      p.text('1.85Wh', 0, -0.45, 0.13, { color: '#4a4f53', weight: 500 });
+      p.rect(0, 1.7, 3.0, 0.6, '#c98a1a');
+      p.rect(0.3, 1.83, 0.14, 0.14, '#d0312d'); p.rect(-0.3, 1.83, 0.14, 0.14, '#18181a');
+      p.text('+', 0.62, 1.75, 0.2, { color: '#1a1a1a' }); p.text('-', -0.62, 1.75, 0.2, { color: '#1a1a1a' });
+      p.text('LiPo 803040', 0, 0.3, 0.2, { color: '#2a2e31' });
+      p.text('3.7V 1100mAh', 0, -0.1, 0.17, { color: '#2a2e31', weight: 500 });
+      p.text('4.07Wh', 0, -0.45, 0.13, { color: '#4a4f53', weight: 500 });
     },
   });
 }

@@ -528,7 +528,7 @@ await test('structure: C7 box parts fit inside and do not collide', () => {
     const solids = [];
     for (const p of u.parts) { solids.push([p.id, p.box]); if (p.bump) solids.push([p.id, p.bump]); }
     for (const po of u.posts) solids.push(['post-' + po.id, [po.x - u.postR, po.y - u.postR, 0, po.x + u.postR, po.y + u.postR, u.tray.z]]);
-    for (const [x0, y0, x1, y1] of u.batteryRibs) solids.push(['rib', [x0, y0, 0, x1, y1, 6]]);
+    for (const [x0, y0, x1, y1] of u.batteryRibs) solids.push(['rib', [x0, y0, 0, x1, y1, u.ribH]]);
     for (const [id, pins] of Object.entries(u.used)) for (const n of pins) solids.push([`jumper-${id}`, S.jumperBox(by[id], n), id]);
     for (const [name, b] of solids) {
         assert.ok(b[0] >= -u.in.w / 2 - e && b[3] <= u.in.w / 2 + e && b[1] >= -u.in.h / 2 - e && b[4] <= u.in.h / 2 + e && b[2] >= -e && b[5] <= u.in.d + e, `${name} is outside the box: ${b}`);
@@ -545,20 +545,31 @@ await test('structure: C7 box parts fit inside and do not collide', () => {
         assert.ok(u.tray.slots.some((s) => j[0] >= s[0] && j[3] <= s[2] && j[1] >= s[1] && j[4] <= s[3]), `jumper ${id}.${n} has no slot in the tray`);
     }
     for (const s of u.tray.slots) assert.ok(s[0] > -u.tray.w / 2 + 1 && s[2] < u.tray.w / 2 - 1 && s[1] > -u.tray.h / 2 + 1 && s[3] < u.tray.h / 2 - 1, `slot ${s} cuts the tray edge`);
-    // the 5 cm link hangs clear of the ESP32, and the height budget adds up to the inside depth
-    assert.ok(u.link.lowY > by.esp.box[4] + 2 && u.link.gap < u.link.len, `link sags to y=${u.link.lowY}`);
+    // the 5 cm link lies clear of the ESP32 and is as long as the cable, and the height budget adds up to the inside depth
+    assert.ok(u.link.lowY > by.esp.box[4] + 2 && Math.abs(u.link.run - u.link.len) < 5, `link: lowest y=${u.link.lowY}, run=${u.link.run}`);
     assert.ok(Math.abs(u.stack.reduce((t, r) => t + r[1], 0) - u.in.d) < 1e-9, 'stack-up equals the inside depth');
-    assert.ok(u.zBoard >= 5.3 + S.JUMPER.bend + S.JUMPER.housing + S.JUMPER.strip, 'jumpers clear the battery');
+    // nothing hangs over the battery: no jumper above it, room to swell under the tray, and the clamp screws stop short of the floor
+    const bat = by.bat.box;
+    for (const [id, pins] of Object.entries(u.used)) for (const n of pins) { const j = S.jumperBox(by[id], n); assert.ok(!(j[0] < bat[3] && bat[0] < j[3] && j[1] < bat[4] && bat[1] < j[4]), `jumper ${id}.${n} hangs over the battery`); }
+    assert.ok(u.tray.z - bat[5] >= 5, 'battery has room to swell under the tray');
+    const bay = u.batteryBay;   // room for a 42 mm cell, and still no jumper over it
+    assert.ok(bay[2] - bay[0] >= 42 && bay[3] - bay[1] >= 31 && bat[0] >= bay[0] && bat[3] <= bay[2] && bat[1] >= bay[1] && bat[4] <= bay[3], 'battery bay');
+    for (const [id, pins] of Object.entries(u.used)) for (const n of pins) { const j = S.jumperBox(by[id], n); assert.ok(!(j[0] < bay[2] && bay[0] < j[3] && j[1] < bay[3] && bay[1] < j[4]), `jumper ${id}.${n} hangs over the battery bay`); }
+    assert.ok(u.clamp.screwLen <= u.clamp.plate[2] + u.clamp.railH + u.floor - 1, 'clamp screws would reach the inside of the box');
     assert.deepEqual([u.out.w, u.out.h, u.out.d], [96, 60, 35]);
 });
-await test('structure: ear pods and joint case hold their board with room for the plug', () => {
-    for (const u of [S.UNITS.podL, S.UNITS.podR, S.UNITS.joint]) {
+await test('structure: ear pods hold their board with room for the plug, one 20 cm cable per ear', () => {
+    for (const u of [S.UNITS.podL, S.UNITS.podR]) {
         for (const p of u.parts) {
             const b = p.box;
             assert.ok(b[0] >= -u.in.w / 2 && b[3] <= u.in.w / 2 && b[1] >= -u.in.h / 2 && b[4] <= u.in.h / 2 && b[2] >= 0 && b[5] <= u.in.d, `${p.id} is outside ${u.id}`);
         }
         assert.ok(u.cableRoom >= 8, `${u.id}: ${u.cableRoom} mm for the plug and the bend`);
     }
+    // no mid-cable joint: one 200 mm cable per ear, and each adapter sits next to its gland so little cable is lost in the box
+    assert.deepEqual(Object.keys(S.UNITS), ['c7', 'podL', 'podR']);
+    const E = S.EAR_CABLE;
+    assert.ok(E.len === 200 && E.inBox.L < 20 && E.inBox.R < 20 && E.outside > 160 && E.outside < E.len, `ear cable: ${E.inBox.L} / ${E.inBox.R} mm in the box, ${E.outside} mm outside`);
     const [l, r] = [S.UNITS.podL, S.UNITS.podR];
     assert.equal(l.exit.x, -r.exit.x, 'pods are mirror images');
     assert.ok(Math.sign(S.pinAt(l.parts[0], l.socket)[0] - l.parts[0].at[0]) === l.s && Math.sign(S.pinAt(r.parts[0], r.socket)[0] - r.parts[0].at[0]) === r.s, 'cable uses the socket on the exit side');

@@ -51,6 +51,33 @@ h1 { font-size: 1.5rem; margin: 0; letter-spacing: .01em; text-wrap: balance; }
   background: #0a7c86; border: 1px solid #3cc3cc; color: #eef4f5; padding: 2px 8px; border-radius: 6px; pointer-events: none;
 }
 .tag::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 10px; background: rgba(255,255,255,.6); }
+.leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.leaders line { stroke: rgba(255,255,255,.55); stroke-width: 1; }
+.lbl {
+  position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font: 600 11.5px var(--font-body); line-height: 1.5;
+  background: rgba(16, 24, 27, .84); border: 1px solid rgba(255,255,255,.3); color: #eef4f5; padding: 0 6px; border-radius: 5px; cursor: pointer;
+}
+.lbl:hover, .lbl[data-on="1"] { background: #0a7c86; border-color: #3cc3cc; }
+.btn {
+  font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--accent);
+  background: var(--accent-soft); color: var(--fg); cursor: pointer;
+}
+.pop {
+  position: fixed; right: 16px; bottom: 16px; z-index: 20; width: min(520px, calc(100vw - 32px)); max-height: min(80vh, 760px);
+  display: flex; flex-direction: column; background: var(--bench); color: var(--fg);
+  border: 1px solid var(--accent); border-radius: 14px; box-shadow: 0 14px 44px rgba(0, 0, 0, .4);
+}
+.pophead { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line); }
+.pophead h2 { margin: 0; font-size: 1rem; flex: 1; text-wrap: balance; }
+.popbody { overflow-y: auto; padding: 4px 16px 16px; font-size: 13.5px; overscroll-behavior: contain; }
+.popbody h3 { font-size: .8rem; color: var(--muted); letter-spacing: .06em; margin: 16px 0 6px; }
+.popbody h4 { font-size: .95rem; margin: 12px 0 2px; }
+.popbody p { margin: 4px 0; }
+.popbody ol, .popbody ul { margin: 4px 0; padding-left: 20px; }
+.popbody li { margin: 3px 0; }
+.popbody dl { margin: 2px 0 0; display: grid; grid-template-columns: 64px 1fr; gap: 2px 8px; }
+.popbody dt { color: var(--muted); font-size: 12px; padding-top: 2px; }
+.popbody dd { margin: 0; }
 .hint { position: absolute; left: 12px; bottom: 10px; right: 12px; font-size: 12px; color: #c4d0d4; pointer-events: none; }
 .sizebox {
   position: absolute; right: 12px; top: 12px; background: rgba(16, 24, 27, .8); color: #eef4f5; pointer-events: none;
@@ -102,7 +129,9 @@ td.num { text-align: right; white-space: nowrap; }
 
 <div class="grid">
   <div class="stage" id="stage">
-    <canvas id="c" aria-label="โมเดลโครงสร้างกล่อง C7 ตลับเซ็นเซอร์ข้างหู และกล่องข้อต่อกลางสาย ลากเพื่อหมุน"></canvas>
+    <canvas id="c" aria-label="โมเดลโครงสร้างกล่อง C7 และตลับเซ็นเซอร์ข้างหู ลากเพื่อหมุน"></canvas>
+    <svg class="leaders" id="leaders" aria-hidden="true"></svg>
+    <div id="labels"></div>
     <div class="tag" id="tag" hidden></div>
     <div class="sizebox mono" id="sizebox"><b id="sizeName">–</b><span id="sizeOut">–</span></div>
     <div class="hint">ลากเพื่อหมุน · ล้อเมาส์/สองนิ้วเพื่อซูม · แตะชิ้นส่วนหรือสายเพื่อดูว่ายึดกับอะไรและต่อไปไหน</div>
@@ -111,10 +140,9 @@ td.num { text-align: right; white-space: nowrap; }
   <div class="panel">
     <div class="card">
       <h2>ดูกล่องไหน</h2>
-      <div class="seg" style="--cols:3" role="group" aria-label="เลือกกล่อง">
+      <div class="seg" style="--cols:2" role="group" aria-label="เลือกกล่อง">
         <button id="fOver" aria-pressed="false">ภาพรวม<small>ทุกกล่อง + สาย</small></button>
         <button id="fC7" aria-pressed="true">กล่อง C7<small>หลังคอ</small></button>
-        <button id="fJoint" aria-pressed="false">ข้อต่อกลางสาย<small>ข้างละ 1</small></button>
         <button id="fPodL" aria-pressed="false">ตลับหูซ้าย<small>BNO085 0x4A</small></button>
         <button id="fPodR" aria-pressed="false">ตลับหูขวา<small>BNO085 0x4B</small></button>
       </div>
@@ -134,7 +162,9 @@ td.num { text-align: right; white-space: nowrap; }
         <label><input type="checkbox" id="xray" checked> มองทะลุผนังและฝา</label>
         <label><input type="checkbox" id="hideLid"> ถอดฝาออก</label>
         <label><input type="checkbox" id="wires" checked> แสดงสาย</label>
+        <label><input type="checkbox" id="labelsOn" checked> ป้ายชื่อชิ้นส่วน</label>
       </div>
+      <div class="row"><button class="btn" id="openExplain" aria-expanded="false" aria-controls="explain">อธิบายโครงสร้างทั้งหมด</button></div>
       <p class="note"><span class="dot" style="background:var(--n-3v3)"></span>3V3 <span class="dot" style="background:var(--n-gnd)"></span>GND <span class="dot" style="background:var(--n-sda)"></span>SDA <span class="dot" style="background:var(--n-scl)"></span>SCL <span class="dot" style="background:var(--n-5v)"></span>แบต / 5 V <span class="dot" style="background:var(--n-qw)"></span>สาย Qwiic (4 เส้นในสายเดียว)</p>
     </div>
 
@@ -155,14 +185,45 @@ td.num { text-align: right; white-space: nowrap; }
     <div class="card">
       <h2>ทำไมกล่อง C7 ต้องหนา 35 มม.</h2>
       <div class="tablewrap"><table id="stackTable"></table></div>
-      <p class="note">ความหนามาจากหัวจัมเปอร์ที่เสียบตั้งฉากใต้ ESP32 กล่องเดิม 76 × 50 × 22 มม. จึงใส่ไม่ได้จริง ขนาดใหม่คือ <b class="mono">96 × 60 × 35 มม.</b> และเมื่อรวมราง แผ่นหนีบ และแผ่นรองด้านหลัง จะยื่นจากผิวราว <b class="mono">44.5 มม.</b></p>
+      <p class="note">ความหนามาจากหัวจัมเปอร์ที่เสียบตั้งฉากใต้บอร์ดบนถาด ไม่ได้มาจากแบต: แบต 803040 หนา 8 มม. วางใต้ ESP32 ระหว่างขา 2 แถว ไม่มีหัวจัมเปอร์อยู่เหนือแบต และเหลือที่ว่าง 12 มม. ถึงใต้ถาดเผื่อแบตบวม กล่องเดิม 76 × 50 × 22 มม. ใส่ไม่ได้จริง ขนาดใหม่คือ <b class="mono">96 × 60 × 35 มม.</b> และเมื่อรวมราง แผ่นหนีบ และแผ่นรองด้านหลัง จะยื่นจากผิวราว <b class="mono">44.5 มม.</b></p>
       <p class="note warn">ถ้าต้องการกล่องบางลง: บัดกรีสายเข้าขา ESP32, Adapter และ GY-521 โดยตรงแทนการเสียบหัวจัมเปอร์ จะตัดความสูงของหัวจัมเปอร์ออกได้ราว 12 มม. (ยังไม่ได้ออกแบบแบบนั้น ต้องตัดสินใจก่อนพิมพ์)</p>
     </div>
 
     <div class="card">
       <h2>สกรูและตัวยึดที่ต้องเพิ่ม</h2>
       <div class="tablewrap"><table id="hwTable"></table></div>
-      <p class="note">รายการนี้ยังไม่ได้ใส่ใน docs/SHOPPING_LIST · ขนาดรูของบอร์ดจริงต้องวัดก่อนซื้อสกรู (ESP32 และ GY-521 รูราว 3 มม., BNO085 รูราว 2.5 มม.)</p>
+      <p class="note">รายการเดียวกันอยู่ใน docs/SHOPPING_LIST หมวด 4 · ขนาดรูของบอร์ดจริงต้องวัดก่อนซื้อสกรู (ESP32 และ GY-521 รูราว 3 มม., BNO085 รูราว 2.5 มม.)</p>
+      <p class="note warn">สกรูแผ่นหนีบต้องยาวไม่เกิน 8 มม. แบตอยู่หลังพื้นกล่องตรงตำแหน่งสกรู 1 ตัว · ในตลับข้างหูใช้สกรูทองเหลือง ไนลอน หรือสเตนเลส เพราะสกรูเหล็กอยู่ห่างเข็มทิศของ BNO085 ราว 1 ซม.</p>
+    </div>
+
+    <div class="card">
+      <h2>ถ้าจะพิมพ์ 3 มิติ</h2>
+      <ul class="steps">
+        <li><b>วัสดุ</b>: PETG เหมาะกว่า PLA เพราะกล่องอยู่ติดตัว โดนเหงื่อและความร้อน และตะขอล็อกของ PETG ไม่เปราะ</li>
+        <li><b>สกรูเกลียวปล่อยลงพลาสติก</b>: ใช้ได้กับจุดที่ขันครั้งเดียว (บอร์ด ถาด) รูนำราว 2.0 มม. สำหรับ M2.5 และ 1.6 มม. สำหรับ M2 เสารับกว้างอย่างน้อย 2 เท่าของสกรู</li>
+        <li><b>จุดที่เปิดปิดบ่อย</b> (ฝากล่อง แผ่นหนีบ): ฝังน็อตทองเหลืองด้วยหัวแร้ง (heat-set insert) M2.5 และ M3 แล้วใช้สกรูเกลียวมิลแทน เกลียวไม่รูดเมื่อถอดหลายครั้ง</li>
+        <li><b>ระยะเผื่อ</b>: ช่องบอร์ดเผื่อข้างละ 0.2–0.3 มม. รูสกรูพิมพ์ออกมาเล็กกว่าแบบราว 0.1–0.2 มม.</li>
+        <li><b>ทิศการพิมพ์</b>: ฐานกล่องหงายพื้นลงแท่น ถาดและฝาวางราบ ตะขอล็อกที่พิมพ์ตั้งจะหักตามชั้น ควรหนาอย่างน้อย 1.2 มม. หรือเปลี่ยนเป็นครีบใต้ฝากดบอร์ดแทน</li>
+        <li><b>จุดที่บางเกินไปในแบบนี้</b>: สกรู M2.5×4 ของ BNO085 กินเนื้อพลาสติกได้แค่ราว 2.4 มม. และผนังตลับหนา 1.5 มม. ควรพิมพ์ชิ้นทดลองก่อน</li>
+      </ul>
+      <p class="note warn">ยังไม่มีไฟล์ STL หน้านี้เป็นผังขนาดและตำแหน่ง ต้องนำไปเขียนแบบใน CAD ก่อนพิมพ์ และยังไม่ได้พิมพ์ทดลอง</p>
+    </div>
+
+    <div class="card">
+      <h2>ขนาดจริงของแต่ละชิ้น</h2>
+      <div class="tablewrap"><table>
+        <tr><th>ชิ้น</th><th>ขนาดที่ใช้ในแบบ</th><th>ที่มา</th></tr>
+        <tr><td>BNO085 (Adafruit 4754)</td><td class="mono">25.6 × 22.7 × 4.6 มม.</td><td>หน้าสินค้า <a href="https://www.adafruit.com/product/4754" target="_blank" rel="noopener">Adafruit</a> · ตำแหน่งรูยึดเป็นค่าประมาณ</td></tr>
+        <tr><td>ESP32 DevKit V1 30 ขา</td><td class="mono">51.8 × 28.2 มม. รู 2.8 มม.</td><td>ค่าที่ผู้ใช้คนหนึ่งวัดจากบอร์ด (<a href="https://forum.fritzing.org/t/doit-esp32-devkit-v1/6158/9" target="_blank" rel="noopener">Fritzing forum</a>) · <b>ระยะแถวขา 25.4 มม. ยังไม่ยืนยัน</b> บอร์ดเลียนแบบมีทั้ง 22.9, 25.4 และ 27.9 มม.</td></tr>
+        <tr><td>GY-521 MPU6050</td><td class="mono">21 × 16 มม. รู 3.2 มม.</td><td>ร้านค้าหลายร้านระบุ 20.2–21 × 15.4–16 มม. · ระยะรูเป็นค่าประมาณ</td></tr>
+        <tr><td>Qwiic Adapter (SparkFun DEV-14495)</td><td class="mono">25.4 × 12.7 มม.</td><td><b>ยังไม่ยืนยัน</b> หน้า SparkFun ไม่ระบุขนาด แหล่งอื่นระบุ 15.2 × 15.2 และ 19.1 × 19.1 มม. ไม่ตรงกัน · SparkFun เรียงรูเป็น SCL, SDA, 3.3V, GND</td></tr>
+        <tr><td>TP4056 USB-C มีวงจรป้องกัน</td><td class="mono">28 × 17 มม.</td><td>ร้านค้า 2 ร้านระบุ 28 × 17 มม. แต่มีรุ่น 25 × 19 และ 26 × 17 มม. ด้วย</td></tr>
+        <tr><td>MT3608</td><td class="mono">36 × 17 × 6.6 มม.</td><td>ร้านค้าส่วนใหญ่ระบุ 36–37 × 17 มม. สูง 6–7 มม.</td></tr>
+        <tr><td>แบต LiPo 803040</td><td class="mono">40 × 30 × 8 มม. ช่องแบต 42 × 31 มม.</td><td>ชื่อรุ่นบอกขนาด · ผู้ผลิตบางรายระบุยาว 42 มม. รวมแผ่นวงจรป้องกัน</td></tr>
+        <tr><td>สาย Flexible Qwiic (SparkFun PRT-17258)</td><td class="mono">200 มม.</td><td>หน้าสินค้า <a href="https://www.sparkfun.com/products/17258" target="_blank" rel="noopener">SparkFun</a> · หัว JST 1 มม. 4 ขา ฉนวนซิลิโคน</td></tr>
+      </table></div>
+      <p class="note">สาย 200 มม. ต่อข้าง ถูกใช้ในกล่อง C7 <b class="mono" id="earIn">–</b> และในตลับ <b class="mono" id="earPod">–</b> จึงเหลือเดินจากหูถึงหลังคอราว <b class="mono" id="earOut">–</b></p>
+      <p class="note warn">ค้นเมื่อ 16 พ.ย. 2026 ตัวเลขที่ยังไม่ยืนยันต้องวัดจากของจริงด้วยเวอร์เนียร์ก่อนพิมพ์กล่อง</p>
     </div>
 
     <div class="card">
@@ -170,10 +231,10 @@ td.num { text-align: right; white-space: nowrap; }
       <ol class="steps">
         <li><b>ที่อยู่ไม่ชนกัน</b>: BNO085 ซ้าย <span class="mono">0x4A</span> (ขา DI ว่าง), BNO085 ขวา <span class="mono">0x4B</span> (บัดกรี 3Vo → DI), MPU6050 <span class="mono">0x68</span> (ขา AD0 ว่าง) ทั้ง 3 ตัวอยู่บนบัสเดียว D21 / D22 ตรงกับที่เฟิร์มแวร์ใช้</li>
         <li>Qwiic Adapter เป็นแค่ลายทองแดง ไม่มีชิปและไม่มีที่อยู่ จะต่อกี่แผ่นก็ไม่เพิ่มอุปกรณ์บนบัส</li>
-        <li>บอร์ดจริงเคยตอบครบทั้ง 3 ที่อยู่แล้ว (10 พ.ย. 2026) แต่เป็นการต่อสายแบบเดิม ไม่ใช่สาย 40 ซม. ตามแบบนี้</li>
-        <li>โหมดปกติใช้ 100 kHz มีเผื่อมาก จุดเสี่ยงคือโหมดเก็บข้อมูล 400 kHz กับสายยาว 40 ซม. สองข้างและหัวต่อข้างละ 4 จุด ถ้าค่าเพี้ยนให้ลด <span class="mono">COLLECT_I2C_HZ</span> เป็น 200000</li>
+        <li>บอร์ดจริงเคยตอบครบทั้ง 3 ที่อยู่แล้ว (10 พ.ย. 2026) แต่เป็นการต่อสายแบบเดิม ไม่ใช่สาย Qwiic 20 ซม. ตามแบบนี้</li>
+        <li>โหมดปกติใช้ 100 kHz มีเผื่อมาก จุดเสี่ยงคือโหมดเก็บข้อมูล 400 kHz สายหูข้างละ 20 ซม. มีหัวต่อข้างละ 2 จุด (เดิม 40 ซม. 4 จุด) ถ้าค่าเพี้ยนให้ลด <span class="mono">COLLECT_I2C_HZ</span> เป็น 200000</li>
       </ol>
-      <p class="note">ตัวต้านทาน pull-up มีบนบอร์ด BNO085 ทั้งสองและ GY-521 อยู่แล้ว ไม่ต้องเพิ่ม · Adafruit เตือนว่า I2C ของ BNO08x มีจังหวะที่ไม่ตรงมาตรฐานและมีปัญหากับ ESP32 ได้ เฟิร์มแวร์จึงมีการตรวจและเปิด report ซ้ำ</p>
+      <p class="note">ตัวต้านทาน pull-up มีบนบอร์ดอยู่แล้ว ไม่ต้องเพิ่ม: Adafruit ระบุว่า BNO085 มี 10 kΩ ที่ SDA และ SCL ทั้งสองบอร์ด ส่วน GY-521 ทั่วไปมี 4.7 kΩ (ยังไม่ได้วัดจากบอร์ดจริง)</p>
       <p class="note warn">ยังไม่ได้ทดสอบ I2C ผ่านสายและหัวต่อตามแบบนี้กับบอร์ดจริง</p>
     </div>
 
@@ -183,9 +244,55 @@ td.num { text-align: right; white-space: nowrap; }
         <li>ยังไม่ได้พิมพ์หรือประกอบจริง ขนาดผนัง เสา ตะขอ และระยะเผื่อเป็นค่าที่เสนอ</li>
         <li>ตำแหน่งรูยึดของ ESP32, GY-521 และ BNO085 และขนาดแผ่น Qwiic Adapter เป็นค่าประมาณ ต้องวัดจากบอร์ดจริงก่อนพิมพ์</li>
         <li>ตำแหน่งชิ้นส่วนบน TP4056 และ MT3608 ต่างกันตามรุ่น</li>
-        <li>ตำแหน่งกล่องข้อต่อกลางสายบนตัวยังไม่ได้วัดกับผู้สวมจริง</li>
+        <li>สายหู 20 ซม. เหลือใช้นอกกล่องราว 16.8 ซม. ผู้ใช้วัดแล้วว่าพอ แต่โมเดลในหน้าแบบอุปกรณ์เสริมประมาณท่าศีรษะตรงไว้ 17.2 ซม. ต้องลองก้มและหันสุดกับสายจริง</li>
+        <li>ขนาดแผ่น Qwiic Adapter และระยะแถวขาของ ESP32 ยังหาตัวเลขที่ยืนยันได้ไม่ได้ ดูการ์ด "ขนาดจริงของแต่ละชิ้น"</li>
       </ul>
     </div>
+  </div>
+</div>
+<div class="pop" id="explain" role="dialog" aria-labelledby="explainTitle" hidden>
+  <div class="pophead">
+    <h2 id="explainTitle">โครงสร้างทั้งหมด: แต่ละชิ้นทำอะไร และต่อไปไหน</h2>
+    <button class="btn" id="closeExplain">ปิด</button>
+  </div>
+  <div class="popbody" tabindex="0">
+    <h3>ภาพรวม</h3>
+    <p>ชุดนี้มี 3 กล่อง: กล่อง C7 ที่หลังคอ 1 กล่อง และตลับเซ็นเซอร์ข้างหู 2 ตลับ ต่อถึงกันด้วยสาย Qwiic 20 ซม. ข้างละ 1 เส้น สาย Qwiic เป็นสายเล็ก 4 เส้นในสายเดียว (ไฟ 3.3 V, GND, SDA, SCL)</p>
+
+    <h3>ข้อมูลเดินทางอย่างไร</h3>
+    <ol>
+      <li>BNO085 ในตลับข้างหูแต่ละข้างวัดการหมุนของศีรษะ (ก้ม เอียง หัน)</li>
+      <li>ค่าเดินตามสาย Qwiic 20 ซม. เส้นเดียว จากตลับลงมาเข้ากล่อง C7 ทางร่องที่ผนังบน</li>
+      <li>สายจากหูซ้ายเสียบ Adapter 1 สายจากหูขวาเสียบ Adapter 2 สองแผ่นนี้ต่อถึงกันด้วยสาย Qwiic 5 ซม. ทุกอย่างจึงอยู่บนสายชุดเดียวกัน (บัส I2C)</li>
+      <li>GY-521 ในกล่อง C7 วัดความเอียงของต้นคอ ต่อเข้าบัสเดียวกันที่ Adapter 2 ด้วยสายจัมเปอร์ 4 เส้น</li>
+      <li>ESP32 ต่อเข้าบัสที่ Adapter 1 ด้วยสายจัมเปอร์ 4 เส้น (ขา D21 = SDA, D22 = SCL) แล้วเรียกอ่านเซ็นเซอร์ทีละตัวตามที่อยู่: หูซ้าย <span class="mono">0x4A</span> หูขวา <span class="mono">0x4B</span> ต้นคอ <span class="mono">0x68</span></li>
+      <li>ESP32 ส่งผลให้หน้าเว็บทางสาย micro-USB ที่ผนังซ้ายของกล่อง</li>
+    </ol>
+
+    <h3>ไฟเดินทางอย่างไร</h3>
+    <ol>
+      <li>แบต LiPo ต่อเข้า TP4056 ที่ขา B+ และ B-</li>
+      <li>ไฟออกจาก TP4056 ขา OUT+ ผ่านสวิตช์เลื่อน ไปเข้า MT3608 ขา VIN+ ส่วน OUT- ต่อตรงไป VIN-</li>
+      <li>MT3608 ยกแรงดันแบต (3.0–4.2 V) เป็น 5 V แล้วส่งเข้าขา VIN และ GND ของ ESP32</li>
+      <li>ESP32 ลดเป็น 3.3 V ออกทางขา 3V3 ไป Adapter 1 แล้วไปถึงเซ็นเซอร์ทุกตัวตามสาย Qwiic</li>
+      <li>ชาร์จแบตทางช่อง USB-C ที่ผนังล่าง ปิดสวิตช์ก่อนชาร์จ</li>
+    </ol>
+    <p class="note">ตอนนี้เฟิร์มแวร์ส่งข้อมูลทางสาย USB เท่านั้น แบตจึงยังไม่ทำให้ใช้งานแบบไร้สายได้</p>
+
+    <h3>สายจากหูถึงกล่อง C7</h3>
+    <ul>
+      <li>ใช้สาย Flexible Qwiic 20 ซม. ข้างละ 1 เส้น ไม่มีข้อต่อกลางสายแล้ว หัวต่อจึงเหลือข้างละ 2 จุด (ที่ตลับ และที่ Adapter ในกล่อง)</li>
+      <li>Adapter ทั้งสองแผ่นวางชิดร่องสายที่ผนังบน สายจึงเสียไปในกล่องแค่ราว 1.4 ซม. และในตลับราว 1.8 ซม. เหลือเดินนอกกล่องราว 16.8 ซม.</li>
+      <li>ผู้ใช้วัดกับตัวจริงแล้วว่า 20 ซม. พอ แต่โมเดลศีรษะในหน้าแบบอุปกรณ์เสริมประมาณท่าศีรษะตรงไว้ 17.2 ซม. และมากกว่านั้นเมื่อก้มพร้อมหัน ให้ลองก้มและหันสุดกับสายจริงก่อนยึดถาวร</li>
+      <li>ถ้าตึง: เลื่อนตลับลงมาใกล้ขอบล่างของฝาครอบหู หรือเปลี่ยนเป็นสายที่ยาวกว่า</li>
+    </ul>
+
+    <h3>แต่ละชิ้นทำหน้าที่อะไร</h3>
+    <div id="explainParts"></div>
+
+    <h3>สายในกล่อง C7 ทีละเส้น</h3>
+    <div id="explainWires"></div>
+    <p class="note warn">แบบร่างข้อเสนอ ยังไม่ได้พิมพ์หรือประกอบจริง</p>
   </div>
 </div>
 <script type="module" src="assets/structure.js"></script>

@@ -6,7 +6,7 @@ import { OrbitControls } from './vendor/three/OrbitControls.js';
 import { GLTFLoader } from './vendor/three/GLTFLoader.js';
 import { DIM, MAT, STRIP_WIDTHS, buildHeadphone, buildEarPod, buildC7Brace, disposeGroup } from './wiring-models.js';
 import { bno085, esp32, gy521, tp4056, mt3608, lipo, slideSwitch, qwiicAdapter } from './wiring-boards.js';
-import { C7 as C7_LAYOUT, BOARD as BOARD_MM } from './structure-layout.js';
+import { C7 as C7_LAYOUT, BOARD as BOARD_MM, EAR_CABLE } from './structure-layout.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = $('stage'), canvas = $('c');
@@ -193,8 +193,8 @@ function measureRange() {
 }
 
 // ---------- the two ear cables: pod -> C7 box, rebuilt whenever the head moves ----------
-const CABLE_STOCK = 40;   // two SparkFun Flexible Qwiic Cables, 200 mm each, joined by a Qwiic Adapter
-const couplerMat = new THREE.MeshPhysicalMaterial({ color: 0xb3202a, roughness: 0.5 });
+// One SparkFun Flexible Qwiic Cable (200 mm) per ear, no joint. Part of it stays inside the box and the pod.
+const CABLE_STOCK = EAR_CABLE.outside / 10;   // cm left to run from the pod to the box
 const cableGroup = new THREE.Group(); world.add(cableGroup);
 const cableMat = new THREE.MeshPhysicalMaterial({ color: 0x1b1d20, roughness: 0.6, sheen: 0.4, sheenColor: new THREE.Color(0x5c656c) });
 const lenStat = { L: { now: 0, max: 0 }, R: { now: 0, max: 0 } };
@@ -219,16 +219,15 @@ function rebuildCables() {
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
     const m = new THREE.Mesh(new THREE.TubeGeometry(curve, 140, 0.13, 10), cableMat);
     m.castShadow = true; m.userData.part = 'cable'; cableGroup.add(m);
-    // the Qwiic Adapter that joins the two 20 cm cables sits halfway along
-    const mid = curve.getPointAt(0.5), cp = new THREE.Mesh(new THREE.BoxGeometry(1.27, 0.45, 2.54), couplerMat);
-    cp.position.copy(mid); cp.lookAt(mid.clone().add(curve.getTangentAt(0.5))); cp.castShadow = true; cp.userData.part = 'cpl'; cableGroup.add(cp);
     lenStat[id].now = curve.getLength();
     if (st.e === 0) lenStat[id].max = Math.max(lenStat[id].max, lenStat[id].now);
     $('len' + id).textContent = lenStat[id].now.toFixed(1) + ' ซม.';
   }
   const mx = Math.max(lenStat.L.max, lenStat.R.max);
   $('lenMax').textContent = mx.toFixed(1) + ' ซม.';
-  $('lenLeft').textContent = (CABLE_STOCK - mx).toFixed(1) + ' ซม.';
+  const left = CABLE_STOCK - mx;
+  $('lenLeft').textContent = left >= 0 ? left.toFixed(1) + ' ซม.' : 'ขาด ' + (-left).toFixed(1) + ' ซม. ในโมเดล';
+  $('lenStock').textContent = CABLE_STOCK.toFixed(1) + ' ซม.';
 }
 
 // ---------- wiring bench: real-size boards, pin names, wires ----------
@@ -257,8 +256,6 @@ function textSprite(text, color = '#eef4f5', h = 0.26, bg = 'rgba(10,16,18,0.82)
 const BOARDS = {
   BNOL: [bno085, -17.4, 3.4, 'bnoL', 'BNO085 ซ้าย · 0x4A', 2.25, 'BNO ซ้าย'],
   BNOR: [bno085, 17.4, 3.4, 'bnoR', 'BNO085 ขวา · 0x4B', 2.25, 'BNO ขวา'],
-  CL: [qwiicAdapter, -11.4, 3.4, 'cpl', 'Qwiic Adapter · ข้อต่อซ้าย', 1.6, 'ข้อต่อซ้าย'],
-  CR: [qwiicAdapter, 11.4, 3.4, 'cpl', 'Qwiic Adapter · ข้อต่อขวา', 1.6, 'ข้อต่อขวา'],
   ESP: [esp32, -4.8, 3.1, 'esp', 'ESP32 DevKit V1 · 30 ขา', 3.0, 'ESP32'],
   J1: [qwiicAdapter, 0.2, 5.3, 'hub', 'Qwiic Adapter 1 · จุดแยก', 1.6, 'Adapter 1'],
   J2: [qwiicAdapter, 4.9, 5.3, 'hub', 'Qwiic Adapter 2 · จุดแยก', 1.6, 'Adapter 2'],
@@ -280,11 +277,9 @@ function buildBench() {
   };
   zone(-20.4, 0.4, -14.6, 7.8, 'ตลับหูซ้าย');
   zone(14.6, 0.4, 20.4, 7.8, 'ตลับหูขวา');
-  zone(-13.9, 0.4, -9.1, 7.8, 'กลางสาย');
-  zone(9.1, 0.4, 13.9, 7.8, 'กลางสาย');
   zone(-8.4, -8.6, 8.4, 7.8, 'กล่อง C7');
   const note = (txt, x, y) => { const t = textSprite(txt, '#c9d6d9', 0.3, 'rgba(10,16,18,0)'); t.position.set(x, y, 0); bench.add(t); };
-  note('สาย Qwiic 20 ซม. + ข้อต่อ + สาย Qwiic 20 ซม.', -12, 8.3); note('สาย Qwiic 20 ซม. + ข้อต่อ + สาย Qwiic 20 ซม.', 12, 8.3);
+  note('สาย Qwiic 20 ซม. เส้นเดียว', -11.5, 8.3); note('สาย Qwiic 20 ซม. เส้นเดียว', 11.5, 8.3);
   note('วงจรแบต: LiPo → ชาร์จ → สวิตช์ → บูสต์ 5V → ขา VIN', 0, -2.55);
   for (const [id, [make, x, y, part, title, ty]] of Object.entries(BOARDS)) {
     const b = make(); b.group.position.set(x, y, 0); bench.add(b.group);
@@ -308,10 +303,8 @@ const CABLES = [
   { id: 'cEsp', name: 'ESP32 → Adapter 1', buy: 'สายจัมเปอร์เมีย-เมีย 4 เส้น', wires: four('ESP', 'J1') },
   { id: 'cLink', name: 'Adapter 1 → Adapter 2', buy: 'สาย Qwiic 5 ซม.', wires: four('J1.QB', 'J2.QA') },
   { id: 'cGy', name: 'Adapter 2 → GY-521', buy: 'สายจัมเปอร์เมีย-เมีย 4 เส้น', wires: four('J2', 'GY') },
-  { id: 'cL1', name: 'Adapter 1 → ข้อต่อซ้าย', buy: 'สาย Qwiic อ่อน 20 ซม.', wires: four('J1.QA', 'CL.QB') },
-  { id: 'cL2', name: 'ข้อต่อซ้าย → BNO085 ซ้าย', buy: 'สาย Qwiic อ่อน 20 ซม.', wires: four('CL.QA', 'BNOL.QT2') },
-  { id: 'cR1', name: 'Adapter 2 → ข้อต่อขวา', buy: 'สาย Qwiic อ่อน 20 ซม.', wires: four('J2.QB', 'CR.QA') },
-  { id: 'cR2', name: 'ข้อต่อขวา → BNO085 ขวา', buy: 'สาย Qwiic อ่อน 20 ซม.', wires: four('CR.QB', 'BNOR.QT') },
+  { id: 'cL', name: 'Adapter 1 → BNO085 ซ้าย', buy: 'สาย Qwiic อ่อน 20 ซม. 1 เส้น', wires: four('J1.QA', 'BNOL.QT2') },
+  { id: 'cR', name: 'Adapter 2 → BNO085 ขวา', buy: 'สาย Qwiic อ่อน 20 ซม. 1 เส้น', wires: four('J2.QB', 'BNOR.QT') },
   { id: 'cAddr', name: 'ตั้งที่อยู่ BNO085 ขวาเป็น 0x4B', buy: 'บัดกรีสายสั้น 1 เส้นบนบอร์ด', wires: [['v33', 'BNOR.3Vo', 'BNOR.DI']] },
   { id: 'cBat', name: 'วงจรแบต', buy: 'สายไฟอ่อน บัดกรี', wires: [
     ['bat', 'BAT.+', 'TP.B+'], ['gnd', 'BAT.-', 'TP.B-'], ['bat', 'TP.OUT+', 'SW.A'], ['bat', 'SW.B', 'MT.VIN+'], ['gnd', 'TP.OUT-', 'MT.VIN-'],
@@ -512,10 +505,11 @@ const INFO = {
     'ดูการต่อขาทั้งหมดได้ในมุมมอง "ผังต่อสาย" และดูว่าแต่ละชิ้นยึดอย่างไรที่หน้า "โครงสร้างในกล่อง"',
   ]],
   cable: ['สายตลับข้างหู → กล่อง C7', [
-    'ข้างละ 2 เส้น: สาย Qwiic อ่อน 20 ซม. ต่อกันด้วย Qwiic Adapter 1 แผ่น (แผ่นสีแดงกลางสาย) รวมยาว 40 ซม.',
+    'ข้างละ 1 เส้น: สาย Flexible Qwiic 20 ซม. จากตลับตรงเข้ากล่อง C7 ไม่มีข้อต่อกลางสาย',
     'ทุกปลายเป็นหัว JST-SH 1.0 มม. 4 ขา เสียบได้ทางเดียว ไม่ต้องบัดกรี',
     'สีสาย: แดง 3V3, ดำ GND, น้ำเงิน SDA, เหลือง SCL',
-    'กล่องมุมขวาบนแสดงความยาวที่ใช้ขณะขยับศีรษะ เทียบกับ 40 ซม.',
+    'สาย 20 ซม. ใช้ในกล่องราว 1.4 ซม. และในตลับราว 1.8 ซม. เหลือเดินนอกกล่องราว 16.8 ซม. กล่องมุมขวาบนเทียบค่านี้กับระยะที่โมเดลประมาณ',
+    'ผู้ใช้วัดกับตัวจริงแล้วว่า 20 ซม. พอ ถ้าโมเดลบอกว่าขาด ให้ลองก้มและหันสุดกับสายจริง',
   ]],
   esp: ['ESP32 DevKit V1 (30 ขา)', [
     'ใช้ 4 ขาฝั่งขวา: 3V3, GND, D21 (SDA), D22 (SCL) ขาละ 1 สาย ไม่มีขาไหนต่อ 2 สาย',
@@ -528,26 +522,19 @@ const INFO = {
     'บัดกรีก้านขาตัวผู้ 4 ขาลงรู 4 รู แล้วเสียบสายจัมเปอร์ตัวเมียได้',
     'Adapter 1: ขา ← ESP32, ช่องซ้าย → หูซ้าย, ช่องขวา → Adapter 2',
     'Adapter 2: ช่องซ้าย ← Adapter 1, ขา → GY-521, ช่องขวา → หูขวา',
-    'ลำดับรูให้ดูตัวหนังสือบนแผ่นจริง ขนาดแผ่นในโมเดลเป็นค่าประมาณ',
-  ]],
-  cpl: ['Qwiic Adapter (ข้อต่อกลางสาย)', [
-    'ใช้ต่อสาย Qwiic 20 ซม. 2 เส้นให้ยาว 40 ซม. เสียบช่องละเส้น',
-    'รู 4 รูไม่ต้องใช้ ไม่ต้องบัดกรี',
-    'ควรหุ้มด้วยท่อหดหรือเทป แล้วยึดกับแถบพาดบ่าไม่ให้หัวหลุด',
+    'ลำดับรูให้ดูตัวหนังสือบนแผ่นจริง (SparkFun ระบุ SCL, SDA, 3.3V, GND) ขนาดแผ่นในโมเดลยังไม่ยืนยัน',
   ]],
   cEsp: ['สาย ESP32 → Adapter 1', ['สายจัมเปอร์เมีย-เมีย 4 เส้น (หัวพลาสติกดำ 2.54 มม. รูเดียว ทั้งสองปลาย)', '3V3 → 3V3, GND → GND, D21 → SDA, D22 → SCL', 'เลือกสีให้ตรงกับสาย Qwiic จะตรวจง่าย: แดง ดำ น้ำเงิน เหลือง']],
   cGy: ['สาย Adapter 2 → GY-521', ['สายจัมเปอร์เมีย-เมีย 4 เส้น', '3V3 → VCC, GND → GND, SDA → SDA, SCL → SCL', 'ขาของ GY-521 เรียง VCC, GND, SCL, SDA ไม่ตรงกับลำดับของ Adapter ให้เสียบทีละเส้นตามชื่อขา']],
   cLink: ['สาย Adapter 1 → Adapter 2', ['สาย Qwiic 5 ซม. หัว JST-SH 4 ขาตัวเมียทั้งสองปลาย', 'เสียบช่องขวาของ Adapter 1 กับช่องซ้ายของ Adapter 2']],
-  cL1: ['สาย Adapter 1 → ข้อต่อซ้าย', ['สาย Qwiic อ่อน 20 ซม. ออกจากกล่อง C7 ขึ้นไปหาข้อต่อกลางสาย']],
-  cL2: ['สายข้อต่อซ้าย → BNO085 ซ้าย', ['สาย Qwiic อ่อน 20 ซม. เสียบช่อง STEMMA QT ของ BNO085 ช่องใดก็ได้']],
-  cR1: ['สาย Adapter 2 → ข้อต่อขวา', ['สาย Qwiic อ่อน 20 ซม. ออกจากกล่อง C7 ขึ้นไปหาข้อต่อกลางสาย']],
-  cR2: ['สายข้อต่อขวา → BNO085 ขวา', ['สาย Qwiic อ่อน 20 ซม. เสียบช่อง STEMMA QT ของ BNO085 ช่องใดก็ได้']],
+  cL: ['สาย Adapter 1 → BNO085 ซ้าย', ['สาย Flexible Qwiic 20 ซม. เส้นเดียว จากช่องซ้ายของ Adapter 1 ออกทางร่องผนังบน ขึ้นไปตลับหูซ้าย', 'เสียบช่อง STEMMA QT ของ BNO085 ช่องใดก็ได้']],
+  cR: ['สาย Adapter 2 → BNO085 ขวา', ['สาย Flexible Qwiic 20 ซม. เส้นเดียว จากช่องขวาของ Adapter 2 ออกทางร่องผนังบน ขึ้นไปตลับหูขวา', 'เสียบช่อง STEMMA QT ของ BNO085 ช่องใดก็ได้']],
   cAddr: ['สายตั้งที่อยู่ BNO085 ขวา', ['บัดกรีสายสั้นจากขา 3Vo ไปขา DI บนบอร์ดเดียวกัน ให้ที่อยู่เป็น 0x4B']],
   cBat: ['สายวงจรแบต', ['สายไฟอ่อนบัดกรีที่แผ่น TP4056, MT3608 และสวิตช์', 'ปลายที่เข้า ESP32 (VIN, GND) ใช้สายจัมเปอร์ตัวเมียตัดปลายหนึ่งแล้วบัดกรีกับ MT3608', 'ดูลำดับในการ์ด "วิธีต่อแบต"']],
   bnoL: ['BNO085 ซ้าย (Adafruit #4754)', ['ที่อยู่ I2C 0x4A: ขา DI ปล่อยว่าง', 'ต่อด้วยสาย Qwiic เสียบช่อง STEMMA QT ช่องใดก็ได้ (2 ช่องต่อถึงกัน)', 'ขาแถวบนและล่างไม่ต้องบัดกรี']],
   bnoR: ['BNO085 ขวา (Adafruit #4754)', ['ที่อยู่ I2C 0x4B: บัดกรีสายสั้นจากขา 3Vo ไปขา DI', 'ต่อด้วยสาย Qwiic เสียบช่อง STEMMA QT ช่องใดก็ได้']],
   mpu: ['GY-521 (MPU6050)', ['ที่อยู่ I2C 0x68: ขา AD0 ปล่อยว่าง', 'ต้องบัดกรีก้านขาตัวผู้ที่แถมมากับบอร์ดก่อน', 'ต่อ 4 ขากับ Qwiic Adapter 2 ด้วยสายจัมเปอร์เมีย-เมีย: VCC, GND, SCL, SDA', 'ขา XDA, XCL, INT ไม่ได้ใช้']],
-  bat: ['แบต LiPo 3.7 V', ['แบบ 1 เซลล์ มีวงจรป้องกันในตัว เช่น 503035 500 mAh (35 × 30 × 5 มม.)', 'สายแดง → B+ และสายดำ → B- ของ TP4056', 'ห้ามต่อแบตเข้า ESP32 โดยตรง']],
+  bat: ['แบต LiPo 3.7 V', ['แบบ 1 เซลล์ มีวงจรป้องกันในตัว รุ่น 803040 1100 mAh (40 × 30 × 8 มม.)', 'สายแดง → B+ และสายดำ → B- ของ TP4056', 'ห้ามต่อแบตเข้า ESP32 โดยตรง']],
   tp: ['TP4056 (ชาร์จ USB-C มีวงจรป้องกัน)', ['B+ / B- ต่อแบต · OUT+ / OUT- จ่ายไฟออก', 'ชาร์จแบตผ่านช่อง USB-C ของบอร์ดนี้', 'ต้องเป็นรุ่นที่มีขา OUT+ / OUT- (มีชิป DW01 ป้องกันแบตหมดเกิน)']],
   sw: ['สวิตช์เลื่อน', ['คั่นสาย OUT+ ระหว่าง TP4056 กับ MT3608', 'ปิดสวิตช์ก่อนเสียบ USB เข้า ESP32 เพื่อไม่ให้ไฟ 2 ทางจ่ายพร้อมกัน']],
   mt: ['MT3608 (บูสต์เป็น 5 V)', ['VIN+ / VIN- รับไฟแบต 3.0–4.2 V · VOUT+ / VOUT- ไปขา VIN / GND ของ ESP32', 'หมุนตัวปรับสีน้ำเงินให้ VOUT = 5.0 V และวัดด้วยมิเตอร์ก่อนต่อเข้า ESP32']],

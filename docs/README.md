@@ -9,6 +9,7 @@
 | สูตรมุมคอ (CVA): ตัวแปร, ค่าคงที่, ที่มา, ตัวอย่าง, ข้อจำกัด | [FORMULA.md](FORMULA.md) |
 | ทิศแกน pitch/roll/yaw และปัญหาแกนในเฟิร์มแวร์ | [SENSOR_AXES.md](SENSOR_AXES.md) |
 | เก็บข้อมูลดิบ 50 Hz: รูปแบบบรรทัด, คอลัมน์ CSV, วิธีเก็บที่แนะนำ | [DATA_COLLECTION.md](DATA_COLLECTION.md) |
+| ส่งข้อมูลผ่าน Wi-Fi: ตั้งค่าบอร์ด, ติดตั้งบนเซิร์ฟเวอร์, ตาราง `c7_devices` / `c7_readings`, API | [WIFI.md](WIFI.md) |
 | ดีไซน์หน้าเว็บ (สี, ตัวอักษร, หลักการเขียนข้อความ) | [DESIGN.md](DESIGN.md) |
 | รายการสั่งซื้อชุดต่อสาย: ร้าน รุ่น ขนาด จำนวน ราคา | [SHOPPING_LIST.md](SHOPPING_LIST.md) ([PDF](SHOPPING_LIST.pdf)) |
 | แผนและงานวิจัยเดิม | [../base_plan.md](../base_plan.md) (บางส่วนไม่ตรงกับโค้ดปัจจุบัน) |

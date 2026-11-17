@@ -255,11 +255,12 @@ th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04
         <li>TP4056 <span class="mono">OUT+</span> → สวิตช์เลื่อน → <span class="mono">VIN+</span> ของ MT3608</li>
         <li>TP4056 <span class="mono">OUT-</span> → <span class="mono">VIN-</span> ของ MT3608</li>
         <li>ยังไม่ต่อ ESP32: เปิดสวิตช์ หมุนตัวปรับของ MT3608 จนวัด <span class="mono">VOUT</span> ได้ 5.0 V</li>
+        <li>บัดกรีตัวเก็บประจุ 470 µF 10 V คร่อม <span class="mono">VOUT+</span> (ขาบวก) และ <span class="mono">VOUT-</span> (ขาที่มีแถบ) ของ MT3608 กันไฟตกตอน Wi-Fi ส่ง</li>
         <li>MT3608 <span class="mono">VOUT+</span> → ขา <span class="mono">VIN</span>, <span class="mono">VOUT-</span> → ขา <span class="mono">GND</span> ของ ESP32</li>
-        <li>ชาร์จแบตผ่านช่อง USB-C ของ TP4056</li>
+        <li>ชาร์จแบตผ่านช่อง USB-C ของ TP4056 ปิดสวิตช์ก่อนชาร์จ · เปลี่ยนตัวต้านทานตั้งกระแสบน TP4056 (เขียน 122 = 1.2 kΩ) เป็น 3 kΩ ให้ชาร์จที่ 400 mA</li>
       </ol>
       <p class="note warn">ห้ามต่อแบตเข้าขา 3V3 หรือ VIN โดยตรง และปิดสวิตช์แบตก่อนเสียบ USB เข้า ESP32</p>
-      <p class="note">เฟิร์มแวร์ตอนนี้ส่งข้อมูลผ่านสาย USB เท่านั้น แบตจึงจ่ายไฟได้ แต่หน้าเว็บยังรับค่าไม่ได้ถ้าไม่เสียบ USB</p>
+      <p class="note">เมื่อใช้แบต บอร์ดส่งข้อมูลทาง Wi-Fi ไปเซิร์ฟเวอร์ (ดู docs/WIFI.md) ใช้ได้ราว 3–4 ชั่วโมงต่อการชาร์จ (ค่าประมาณ ยังไม่ได้วัด) · ผังต่อสายในหน้านี้ยังไม่ได้วาดตัวเก็บประจุ ดูตำแหน่งได้ที่หน้า <a href="structure.html" style="color:var(--accent)">โครงสร้างในกล่อง</a></p>
     </div>
 
     <div class="card">

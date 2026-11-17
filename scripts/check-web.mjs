@@ -583,10 +583,13 @@ await test('structure: every part has a mount, and wires end on real pins', () =
         assert.ok(S.C7_CABLES[w.cable], w.cable); nets[w.net]++;
     }
     // one wire per header pin: no pin carries two jumpers
-    const used = S.C7_WIRES.flatMap((w) => [w.a.join('.'), w.b.join('.')]).filter((k) => !/^(bat|tp|mt|sw)\./.test(k));
+    const used = S.C7_WIRES.flatMap((w) => [w.a.join('.'), w.b.join('.')]).filter((k) => !/^(bat|tp|mt|sw|cap)\./.test(k));
     assert.equal(new Set(used).size, used.length, 'a header pin is used twice');
     for (const [id, pins] of Object.entries(S.C7.used)) for (const n of pins) assert.ok(used.includes(`${id}.${n}`), `${id}.${n} has a jumper but no wire`);
-    assert.deepEqual(nets, { v33: 2, gnd: 5, sda: 2, scl: 2, bat: 4 });
+    assert.deepEqual(nets, { v33: 2, gnd: 6, sda: 2, scl: 2, bat: 5 });   // + the two leads of the bulk capacitor on the 5 V rail
+    // Wi-Fi: no board sits within 10 mm of the antenna end of the ESP32
+    const tip = by.esp.box[3];
+    for (const id of ['hubA', 'hubB', 'mpu']) { const b = by[id].box; assert.ok(b[0] - tip >= 10 || b[1] - by.esp.box[4] >= 8 || b[3] < tip - 12, `${id} is too close to the ESP32 antenna`); }
     assert.ok(S.hardware().length >= 5);
 });
 

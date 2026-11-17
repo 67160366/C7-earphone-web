@@ -172,6 +172,11 @@ function buildC7() {
   swg.add(box(8.6, 4.3, 4.7, MAT.steel, sx, -25.85, 2.35), box(2.2, 4.6, 2, MAT.housing, sx - 1.4, -30.2, 2.35));
   for (const dx of [-2.5, 0, 2.5]) swg.add(box(0.6, 2.4, 0.4, MAT.steel, sx + dx, -22.6, 2.3));
   reg(swg, 'c7', 'floor', 'sw');
+  // bulk capacitor lying on the floor next to the MT3608 (its stripe marks the minus lead)
+  const cb = by.cap.box, cr = (cb[3] - cb[0]) / 2, capG = new THREE.Group();
+  capG.add(mesh(new THREE.CylinderGeometry(cr, cr, cb[4] - cb[1], 24), MAT.housing, (cb[0] + cb[3]) / 2, (cb[1] + cb[4]) / 2, cr));
+  capG.add(box(1.6, cb[4] - cb[1] - 1, 0.3, MAT.lid, (cb[0] + cb[3]) / 2 + cr * 0.6, (cb[1] + cb[4]) / 2, cr * 1.8));
+  reg(capG, 'c7', 'floor', 'cap');
 
   // tray: plate with slots under every header row, bosses, ledges and hooks for the boards on it
   const ts = rrShape(u.tray.w, u.tray.h, 2);
@@ -417,7 +422,7 @@ $('labelsOn').onchange = (e) => { st.labels = e.target.checked; dirty = true; };
 // ---------- name labels on every part (toggle). A label sits near its part; a thin line joins the two. ----------
 const SHORT = {
   base: 'ฐานกล่อง', tray: 'ถาดบอร์ด', lid: 'ฝากล่อง', clamp: 'แผ่นหนีบแถบ', strip: 'แถบพาดบ่า',
-  bat: 'แบต LiPo', mt: 'MT3608', tp: 'TP4056', sw: 'สวิตช์', esp: 'ESP32', hubA: 'Adapter 1', hubB: 'Adapter 2', mpu: 'GY-521',
+  bat: 'แบต LiPo', mt: 'MT3608', tp: 'TP4056', sw: 'สวิตช์', cap: 'ตัวเก็บประจุ', esp: 'ESP32', hubA: 'Adapter 1', hubB: 'Adapter 2', mpu: 'GY-521',
   bnoL: 'BNO085 ซ้าย', bnoR: 'BNO085 ขวา', podBaseL: 'ฐานตลับ', podBaseR: 'ฐานตลับ', podLidL: 'ฝาตลับ', podLidR: 'ฝาตลับ', podClampL: 'แคลมป์รัดสาย', podClampR: 'แคลมป์รัดสาย',
 };
 const labelLayer = $('labels'), leaderSvg = $('leaders'), labels = [];
@@ -473,12 +478,13 @@ const ROLE = {
   lid: 'ปิดกล่องและกดถาดไว้กับเสา ถอดออกเพื่อเข้าถึงบอร์ด',
   clamp: 'หนีบแถบพาดบ่าไว้กับหลังกล่อง กล่องจึงอยู่กลางหลังคอ แผ่นรองนุ่มเป็นด้านที่แตะตัว',
   strip: 'โครงพาดบ่าทั้งสองข้าง รับน้ำหนักกล่อง C7 ดัดให้เข้ารูปบ่าได้',
-  esp: 'ตัวประมวลผลหลัก อ่านเซ็นเซอร์ทั้ง 3 ตัวผ่านบัส I2C คำนวณมุมคอ (ค่าประมาณ) แล้วส่งให้หน้าเว็บทาง micro-USB และจ่ายไฟ 3.3 V ให้เซ็นเซอร์ทุกตัวจากขา 3V3',
+  esp: 'ตัวประมวลผลหลัก อ่านเซ็นเซอร์ทั้ง 3 ตัวผ่านบัส I2C คำนวณมุมคอ (ค่าประมาณ) แล้วส่งออกทาง Wi-Fi ไปเซิร์ฟเวอร์ หรือทาง micro-USB ไปหน้าเว็บ และจ่ายไฟ 3.3 V ให้เซ็นเซอร์ทุกตัวจากขา 3V3 เสาอากาศ Wi-Fi อยู่ปลายบอร์ดด้านกลางกล่อง',
   hubA: 'จุดแยกสายตัวที่ 1 เป็นแผ่นลายทองแดง ไม่มีชิป รับสาย 4 เส้นจาก ESP32 แล้วแยกไปหูซ้าย (สาย 20 ซม. เส้นเดียว) และไป Adapter 2',
   hubB: 'จุดแยกสายตัวที่ 2 รับบัสต่อจาก Adapter 1 แล้วแยกไป GY-521 และไปหูขวา',
   mpu: 'เซ็นเซอร์วัดความเอียงของต้นคอ ใช้ประมาณว่าคอยื่นไปข้างหน้าเท่าไร ถ้าไม่มีตัวนี้ ค่ามุมคอจะประมาณจากการก้มศีรษะอย่างเดียว',
-  bat: 'แหล่งไฟเมื่อไม่ได้รับไฟจาก USB ความจุ 1100 mAh',
-  tp: 'ชาร์จแบตจากช่อง USB-C (สูงสุด 1 A ตัดที่ 4.2 V) และมีวงจรป้องกันแบตหมดเกินและลัดวงจร',
+  bat: 'แหล่งไฟตอนใช้ผ่าน Wi-Fi โดยไม่เสียบสาย ความจุ 1100 mAh ใช้ได้ราว 3–4 ชั่วโมงต่อการชาร์จ (ค่าประมาณ ยังไม่ได้วัด)',
+  cap: 'เก็บไฟสำรองไว้จ่ายช่วงสั้น ๆ ตอน Wi-Fi ส่งข้อมูล ซึ่ง ESP32 ดึงกระแสสูงเป็นจังหวะ ถ้าไม่มี ไฟ 5 V อาจตกจนบอร์ดรีเซ็ต',
+  tp: 'ชาร์จแบตจากช่อง USB-C และมีวงจรป้องกันแบตหมดเกินและลัดวงจร ตัวต้านทานตั้งกระแสบนบอร์ดเปลี่ยนเป็น 3 kΩ ให้ชาร์จที่ 400 mA แทน 1 A เพื่อถนอมแบต',
   sw: 'เปิดปิดเครื่อง โดยตัดสายไฟบวกระหว่าง TP4056 กับ MT3608',
   mt: 'ยกแรงดันแบตเป็น 5 V ให้ ESP32 ต้องตั้งให้ได้ 5.0 V ก่อนต่อ',
   bnoL: 'เซ็นเซอร์วัดการหมุนของศีรษะที่หูซ้าย (ก้ม เอียง หัน) ที่อยู่ I2C 0x4A',

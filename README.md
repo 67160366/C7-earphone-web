@@ -35,6 +35,7 @@
 6. **[`structure.html`](structure.html)** โครงสร้างในกล่อง (ข้อเสนอ ยังไม่ได้พิมพ์จริง): กล่อง C7 96 × 60 × 35 มม. 2 ชั้นมีถาดบอร์ดคั่น (แบต 803040 อยู่ใต้ ESP32) และตลับเซ็นเซอร์ข้างหู มีป้ายชื่อชิ้นส่วนและป๊อบอัพอธิบายโครงสร้าง
    - แต่ละชิ้นวางตรงไหน ยึดด้วยอะไร สายเดินทางไหน ดูแบบประกอบแล้วหรือแยกชิ้นทีละชั้น แตะชิ้นส่วนหรือแถวในตารางเพื่อดูรายละเอียด
    - ตำแหน่งและขนาดอยู่ใน `assets/structure-layout.js` (หน้า wiring ใช้ชุดเดียวกัน) และ `node scripts/check-web.mjs` ตรวจว่าชิ้นส่วนไม่ชนกันและอยู่ในกล่อง
+   - **ไฟล์พิมพ์ 3 มิติ** (STL / 3MF, ยังไม่ได้พิมพ์จริง): `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-cad.ps1` ต้องมี OpenSCAD วิธีใช้อยู่ใน [`cad/README.md`](cad/README.md)
 7. **[`assets/c7-core.js`](assets/c7-core.js)** โค้ดที่ทั้งสองหน้าใช้ร่วมกัน: สูตร CVA geometry 1 (ตรงกับ `calculateCVA()` ในเฟิร์มแวร์และ `api/save_angle.php` อธิบายใน [`docs/FORMULA.md`](docs/FORMULA.md)), การตรวจ Protocol v2 (รับ v1 ได้โดยถอด pitch ออกจาก `c7_angle`), การเชื่อม USB และข้อมูลจำลอง ดีไซน์อยู่ที่ [`docs/DESIGN.md`](docs/DESIGN.md)
 
 ### เปิดใช้งาน

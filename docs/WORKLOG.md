@@ -13,6 +13,24 @@
 
 ---
 
+## 2026-11-22 ไฟล์พิมพ์ 3 มิติของกล่อง C7 และตลับข้างหู (OpenSCAD)
+- งานที่ทำ (ผู้ใช้สั่ง clone ลงเครื่องใหม่ ตรวจ setup และทำไฟล์สำหรับพิมพ์ 3 มิติ; เลือก OpenSCAD, คงหัวจัมเปอร์ กล่องหนา 35 มม., ยังไม่รู้ว่าจะใช้เครื่องพิมพ์อะไร):
+  - clone ลง `D:\work\C7-earphone-web` ตรวจ setup: `CLAUDE.md` → `AGENTS.md` ครบ ไม่ได้แก้
+  - ติดตั้ง OpenSCAD 2021.01 ด้วย winget (ผู้ใช้อนุญาต)
+  - `scripts/cad-model.mjs`: คำนวณรูปทรงของ 10 ชิ้นจาก `structure-layout.js` ตามที่ `structure.js` วาด + ระยะเผื่อ รูสกรู (pilot / insert) ทิศพิมพ์ ไม่มี dependency
+  - `scripts/export-cad.mjs` → `cad/params.scad`; `cad/lib.scad`, `cad/part.scad`, `cad/assembly.scad`, `cad/test_fit.scad`; `scripts/build-cad.ps1` เรียก OpenSCAD ส่งออก STL / 3MF / PNG และหยุดถ้าชิ้นไม่ตัน
+  - แก้ 4 จุดที่แบบเดิมชนกันหรือพิมพ์ไม่ได้ (ตะขอ Adapter 2 ทะลุผนัง → ครีบใต้ฝา, มุมกั้น/ตะขอ TP4056 ชนตัวเก็บประจุ, ครีบสวิตช์ชน TP4056, เสาแตะผนังเป็นเส้น) เฉพาะในไฟล์พิมพ์ ภาพหน้า structure ยังเป็นแบบเดิม
+  - เทสต์ใหม่ 2 ข้อใน `check-web.mjs`; `cad/out/` ใส่ใน `.gitignore`
+- ไฟล์ที่แตะ: `scripts/cad-model.mjs`, `scripts/export-cad.mjs`, `scripts/build-cad.ps1`, `scripts/check-web.mjs`, `cad/*` (ใหม่), `.gitignore`, `structure.html` (ข้อความการ์ด "ถ้าจะพิมพ์ 3 มิติ"), `README.md`, `AGENTS.md`, `HANDOFF.md`, `docs/WORKLOG.md`
+- ตรวจแล้ว:
+  - `node scripts/check-web.mjs` 39/39 ผ่าน (เดิม 37 + cad 2 ข้อ; ก่อนแก้ข้อชนกัน เทสต์ใหม่ล้ม 3 รอบที่ cap / tp ตามที่แก้ข้างบน)
+  - `scripts/build-cad.ps1` ครบ 11 ชิ้น (STL + 3MF + PNG) ไม่มี `Simple: no`; `-Screw insert` กับ c7_base / c7_tray / c7_lid ผ่าน; รอบแรก c7_base ไม่ตัน (เสาแตะผนัง) แก้แล้ว
+  - ดูภาพ PNG ของ c7_base, c7_tray, pod_base_L, assembly
+- ยังไม่ได้ยืนยัน: ยังไม่ได้พิมพ์ ประกอบ หรือเปิดใน slicer; ขนาด Qwiic Adapter, ระยะแถวขา ESP32, รูยึด BNO085 / GY-521 และความหนาสาย Qwiic ยังเป็นค่าประมาณ; ไม่ได้รัน `check-api.mjs` (ไม่ได้แตะ API); ไม่ได้เปิดหน้า structure ในเบราว์เซอร์หลังแก้ข้อความการ์ด
+- งานต่อไป: พิมพ์ `test_fit` แล้วปรับ `-Fit` / `-HoleAdd`; วัดบอร์ดจริง; พิมพ์ตลับ 1 ข้างก่อนกล่อง; พิจารณาแก้ `structure.js` ให้วาดตรงกับไฟล์พิมพ์ (3 จุดที่ชนกัน)
+
+---
+
 ## 2026-11-17 เตรียมลองส่งผ่าน Wi-Fi ด้วย hotspot ของผู้ใช้ (ยังไม่ได้ส่งจริง)
 - งานที่ทำ (ผู้ใช้ถามเรื่อง Wi-Fi ของมหาวิทยาลัย / MQTT แล้วสั่งลองทางตั้ง Wi-Fi ผ่านหน้าตั้งค่าของบอร์ด ใช้เครื่องนี้เป็นเซิร์ฟเวอร์ กับ hotspot ชื่อ `G`):
   - ตรวจ Wi-Fi ของเครื่องนี้ด้วย `netsh wlan`: `Buu-WiFi by Informatics` เป็นวงเปิด (Open / None) เครื่องนี้จับที่ 5 GHz ช่อง 40 ได้ IP `10.80.81.234/20`; มีโปรไฟล์ `Buu-WiFi1X by Informatics` เป็น WPA3-Enterprise PEAP; ผู้ใช้ยืนยันว่าวงเปิดมีหน้าเว็บล็อกอินรหัสนิสิต บอร์ดจึงใช้วงนี้ไม่ได้

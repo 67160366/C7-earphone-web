@@ -593,4 +593,54 @@ await test('structure: every part has a mount, and wires end on real pins', () =
     assert.ok(S.hardware().length >= 5);
 });
 
+// ---------- cad/: printable parts generated from the same layout ----------
+const CAD = await import('./cad-model.mjs');
+const primBox = (p) => p[0] === 'cyl' ? [p[1] - p[5], p[2] - p[5], p[3], p[1] + p[5], p[2] + p[5], p[4]]
+    : p[0] === 'tri' ? [Math.min(...p[1].map((q) => q[0])), Math.min(...p[1].map((q) => q[1])), p[2], Math.max(...p[1].map((q) => q[0])), Math.max(...p[1].map((q) => q[1])), p[3]] : p.slice(1, 7);
+const overlap3 = (a, b) => [0, 1, 2].reduce((v, i) => v * Math.max(0, Math.min(a[i + 3], b[i + 3]) - Math.max(a[i], b[i])), 1);
+const pcb = (p) => (p.kind ? [p.box[0], p.box[1], p.at[2], p.box[3], p.box[4], p.at[2] + S.BOARD[p.kind].t] : p.box);   // board itself, or the whole small part
+const adds = (part) => part.steps.filter(([op]) => op === 'add').flatMap(([, list]) => list);
+await test('cad: 10 printed parts with the outside sizes of the layout, params.scad up to date', async () => {
+    const parts = CAD.cadParts(), by = Object.fromEntries(parts.map((p) => [p.name, p]));
+    assert.deepEqual(Object.keys(by), ['c7_base', 'c7_tray', 'c7_lid', 'c7_clamp', 'pod_base_L', 'pod_lid_L', 'pod_clamp_L', 'pod_base_R', 'pod_lid_R', 'pod_clamp_R']);
+    const [b, l] = [CAD.bbox(by.c7_base), CAD.bbox(by.c7_lid)];
+    assert.deepEqual([b.size[0], b.size[1]], [S.C7.out.w, S.C7.out.h]);
+    assert.equal(l.hi[2] - (-S.C7.floor), S.C7.out.d, 'floor to lid top = box thickness');
+    assert.equal(b.lo[2], -S.C7.floor - S.C7.clamp.railH, 'rails under the floor');
+    for (const s of ['L', 'R']) {
+        const u = S.UNITS['pod' + s], pb = CAD.bbox(by['pod_base_' + s]), pl = CAD.bbox(by['pod_lid_' + s]);
+        assert.deepEqual([pb.size[0], pb.size[1], pl.hi[2] - pb.lo[2]], [u.out.w, u.out.h, +u.out.d.toFixed(2)], `pod ${s} outside size`);
+    }
+    for (const p of parts) assert.ok(p.z[0] <= CAD.bbox(p).lo[2] + 1e-9 && p.z[1] >= CAD.bbox(p).hi[2] - 1e-9, `${p.name}: z range used for the print orientation is wrong`);
+    const disk = await readFile(new URL('../cad/params.scad', import.meta.url), 'utf8');
+    assert.equal(disk.replace(/\r\n/g, '\n'), CAD.paramsScad(), 'cad/params.scad is stale: run node scripts/export-cad.mjs');
+});
+await test('cad: nothing printed runs into a board, screws leave plastic', () => {
+    for (const mode of ['pilot', 'insert']) {
+        const by = Object.fromEntries(CAD.cadParts({ screwMode: mode }).map((p) => [p.name, p]));
+        const c7 = Object.fromEntries(S.C7.parts.map((p) => [p.id, p]));
+        // base features vs the floor level; tray and lid vs the board level (PCB only: hook lips and ribs grip the board edge from above)
+        const checks = [['c7_base', ['bat', 'mt', 'tp', 'sw', 'cap']], ['c7_tray', ['esp', 'hubA', 'hubB', 'mpu']], ['c7_lid', ['esp', 'hubA', 'hubB', 'mpu']]];
+        for (const [name, ids] of checks) for (const p of adds(by[name])) for (const id of ids) {
+            if (p[0] === 'rbox') continue;   // shells and plates: checked by the layout tests
+            assert.ok(overlap3(primBox(p), pcb(c7[id])) < 1e-6, `${name}: ${JSON.stringify(p)} runs into ${id}`);
+        }
+        for (const s of ['L', 'R']) {
+            const u = S.UNITS['pod' + s], bno = u.parts[0];
+            const pins = S.BOARD.bno085.holes.map(([x, y]) => S.boardXY(bno, x, y));
+            for (const name of ['pod_base_' + s, 'pod_clamp_' + s]) for (const p of adds(by[name])) {
+                if (p[0] === 'rbox' || (p[0] === 'cyl' && p[5] < 1.2 && pins.some(([x, y]) => Math.hypot(x - p[1], y - p[2]) < 0.01))) continue;   // locating pins go through the board
+                assert.ok(overlap3(primBox(p), pcb(bno)) < 1e-6, `${name}: ${JSON.stringify(p)} runs into the BNO085`);
+            }
+            for (const p of adds(by['pod_lid_' + s])) if (p[0] === 'box') assert.ok(overlap3(primBox(p), bno.box) < 1e-6, `pod lid ${s} hook runs into the BNO085`);
+        }
+        // clamp screws: the hole stops at least 0.9 mm under the inside floor (the battery lies there), and keeps a 0.8 mm wall in the 6 mm rail
+        const railHoles = by.c7_base.steps.at(-1)[1].filter((p) => p[0] === 'cyl' && p[3] < -S.C7.floor);
+        assert.equal(railHoles.length, mode === 'insert' ? 8 : 4);
+        for (const h of railHoles) assert.ok(h[4] <= -0.9 && S.C7.clamp.railW / 2 - h[5] >= 0.8, `rail hole ${JSON.stringify(h)} (${mode})`);
+        // post holes keep a 0.8 mm wall
+        for (const h of by.c7_base.steps.at(-1)[1]) if (h[3] >= 0) assert.ok(S.C7.postR - h[5] >= 0.8, `post hole too wide (${mode})`);
+    }
+});
+
 console.log(`\n${passed} checks passed`);

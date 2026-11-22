@@ -65,8 +65,9 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1          # เปิดหน้าเว็บที่ http://127.0.0.1:8090/
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1 -Lan     # เปิดแบบรับจากเครือข่ายด้วย (เครื่องนี้เป็นเซิร์ฟเวอร์ของหูฟัง Wi-Fi, ดู docs/WIFI.md)
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/serve.ps1 -Stop    # ปิด server
-node scripts/check-web.mjs                                                       # เทสต์ c7-core.js + c7-collect.js + structure-layout.js (ตอนนี้ 37 ข้อ)
+node scripts/check-web.mjs                                                       # เทสต์ c7-core.js + c7-collect.js + structure-layout.js + cad-model.mjs (ตอนนี้ 39 ข้อ)
 node scripts/check-api.mjs                                                       # เทสต์ api/ingest.php + api/devices.php กับ SQLite ชั่วคราว (ตอนนี้ 24 ข้อ)
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-cad.ps1      # สร้างไฟล์พิมพ์ 3 มิติ cad/out/*.stl, *.3mf, *.png (ต้องมี OpenSCAD 2021.01+)
 git diff --check
 ```
 ต้องมี PHP 8 ขึ้นไปสำหรับ server, Node 18 ขึ้นไปสำหรับเทสต์ และ Chrome หรือ Edge สำหรับ Web Serial
@@ -92,6 +93,7 @@ git diff --check
 | `wiring.html`, `assets/wiring.js` | แบบร่าง 3 มิติ: หูฟังครอบหูของผู้ใช้ + ตลับเซ็นเซอร์ข้างหู + โครงพาดบ่าและกล่อง C7 + ผังต่อสายและวงจรแบต (ข้อเสนอ ไม่ต่อ USB) |
 | `structure.html`, `assets/structure.js` | โครงสร้างในกล่อง C7 และตลับข้างหู: ตำแหน่ง ที่ยึด ทางเดินสาย ภาพแยกชิ้น ป้ายชื่อ ป๊อบอัพอธิบาย (ข้อเสนอ ไม่ต่อ USB) |
 | `assets/structure-layout.js` | แหล่งความจริงของขนาดกล่อง ตำแหน่งบอร์ด ที่ยึด และสายในกล่อง หน่วยเป็นมิลลิเมตร ไม่แตะ DOM ใช้ทั้งหน้า structure, หน้า wiring (`fillBox()`) และเทสต์ ถ้าเปลี่ยนขนาดกล่องต้องแก้ `DIM.box` / `DIM.pod` ใน `wiring-models.js` ให้ตรง |
+| `scripts/cad-model.mjs`, `scripts/export-cad.mjs`, `scripts/build-cad.ps1`, `cad/` | ไฟล์พิมพ์ 3 มิติของกล่อง C7 และตลับข้างหู สร้างจาก `structure-layout.js` (ดู [cad/README.md](cad/README.md)) `cad/params.scad` เป็นไฟล์ที่สร้างอัตโนมัติ: ถ้าแก้ `structure-layout.js` หรือ `cad-model.mjs` ต้องรัน `node scripts/export-cad.mjs` (เทสต์ตรวจว่าไม่ค้าง) `cad/out/` ไม่เข้า git |
 | `assets/wiring-models.js` | ตัวสร้างโมเดลของหน้า wiring (หูฟัง, ตลับ, โครง C7) ไม่แตะ DOM หน่วยเป็นเซนติเมตร ขนาดอยู่ใน `DIM` |
 | `assets/wiring-boards.js` | โมเดลบอร์ดขนาดจริงของหน้า wiring (silkscreen วาดด้วย canvas, ตำแหน่งขาทุกขา) ถ้าเปลี่ยนขาที่ใช้ต้องตรงกับ `I2C0_SDA_PIN` / `I2C0_SCL_PIN` ในเฟิร์มแวร์ (หน้า wiring ไม่มีมอเตอร์สั่นแล้ว แต่เฟิร์มแวร์ยังมี `HAPTIC_MOTOR_PIN`) |
 | `assets/c7-collect.js` | อ่านบรรทัด `H`/`D` ของโหมดเก็บข้อมูล, quaternion, CSV, ข้อมูลจำลอง (ดู `docs/DATA_COLLECTION.md`) |

@@ -13,6 +13,19 @@
 
 ---
 
+## 2026-11-22 ใส่ไฟล์พิมพ์ STL / 3MF ลง git ให้โหลดไปพิมพ์ได้ทันที
+- งานที่ทำ (ผู้ใช้สั่ง "แก้ และ push cad ด้วย หน้างาน repo นี้ต้องพร้อมใช้"):
+  - สร้างไฟล์ทุกชิ้นใหม่ด้วยค่าเริ่มต้น (fit 0.25, hole_add 0.15, pilot) แล้วเอา `cad/out/` เข้า git (ยกเว้น `cad/out/_src/`) รวม 11 STL + 11 3MF + 12 PNG ราว 2.9 MB
+  - `.gitattributes`: STL / 3MF ไม่แปลงท้ายบรรทัด
+  - `build-cad.ps1` เขียน `cad/out/build.json` (sha256 ของ `params.scad` + ค่าที่ใช้) เมื่อสร้างครบทุกชิ้น; `check-web.mjs` ตรวจว่า hash ตรงกับ layout ปัจจุบันและมี STL / 3MF ครบ
+  - แก้ README, `cad/README.md`, AGENTS (ต้อง commit `cad/out/` เมื่อแก้ layout), การ์ดในหน้า structure, HANDOFF (สถานะ commit / push)
+- ไฟล์ที่แตะ: `.gitignore`, `.gitattributes` (ใหม่), `cad/out/*` (ใหม่), `scripts/build-cad.ps1`, `scripts/check-web.mjs`, `cad/README.md`, `README.md`, `AGENTS.md`, `structure.html`, `HANDOFF.md`, `docs/WORKLOG.md`
+- ตรวจแล้ว: `scripts/build-cad.ps1` ครบ 11 ชิ้นไม่มีชิ้นไม่ตัน; `node scripts/check-web.mjs` 39/39 ผ่าน; `git diff --check` ผ่าน
+- ยังไม่ได้ยืนยัน: ยังไม่ได้พิมพ์ ประกอบ หรือเปิดใน slicer; ไม่ได้เปิดหน้า structure ในเบราว์เซอร์หลังแก้ข้อความการ์ด
+- งานต่อไป: พิมพ์ `cad/out/test_fit.stl` แล้วปรับ `-Fit` / `-HoleAdd`; วัดบอร์ดจริง
+
+---
+
 ## 2026-11-22 ไฟล์พิมพ์ 3 มิติของกล่อง C7 และตลับข้างหู (OpenSCAD)
 - งานที่ทำ (ผู้ใช้สั่ง clone ลงเครื่องใหม่ ตรวจ setup และทำไฟล์สำหรับพิมพ์ 3 มิติ; เลือก OpenSCAD, คงหัวจัมเปอร์ กล่องหนา 35 มม., ยังไม่รู้ว่าจะใช้เครื่องพิมพ์อะไร):
   - clone ลง `D:\work\C7-earphone-web` ตรวจ setup: `CLAUDE.md` → `AGENTS.md` ครบ ไม่ได้แก้

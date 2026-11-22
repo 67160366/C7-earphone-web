@@ -11,7 +11,7 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-cad.ps1
 ```
 
-ได้ไฟล์ใน `cad/out/` (ไม่เข้า git): `<ชิ้น>.stl`, `<ชิ้น>.3mf` (วางในทิศพิมพ์แล้ว) และ `<ชิ้น>.png` ไว้ดูภาพ รวมทั้ง `assembly.png` (ภาพแยกชั้น)
+ได้ไฟล์ใน `cad/out/` (**เข้า git แล้ว โหลดไปพิมพ์ได้เลย ไม่ต้องติดตั้งอะไร**): `<ชิ้น>.stl`, `<ชิ้น>.3mf` (วางในทิศพิมพ์แล้ว) และ `<ชิ้น>.png` ไว้ดูภาพ รวมทั้ง `assembly.png` (ภาพแยกชั้น)
 
 | ตัวเลือก | ค่าเริ่มต้น | ความหมาย |
 | --- | --- | --- |
@@ -21,6 +21,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-cad.ps1
 | `-PodCable` | 1.2 | ความสูงจากพื้นตลับถึงลิ้นของแคลมป์รัดสาย = ความหนาสาย Qwiic (มม.) |
 | `-Only` | ทุกชิ้น | เช่น `-Only c7_lid,pod_lid_L` |
 | `-NoPng`, `-No3mf` | | ข้ามภาพหรือ 3MF ให้เร็วขึ้น |
+
+ไฟล์ใน git สร้างด้วยค่าเริ่มต้นเสมอ `cad/out/build.json` บอกค่าที่ใช้ และ `node scripts/check-web.mjs` จะล้มถ้า layout เปลี่ยนแล้วยังไม่ได้สร้างไฟล์ใหม่ ถ้าสร้างด้วยค่าอื่นเพื่อพิมพ์เอง (เช่น `-Fit 0.3`) ห้าม commit ให้รันสคริปต์ด้วยค่าเริ่มต้นอีกครั้งก่อน commit
 
 เปิดแก้ใน OpenSCAD GUI: เปิด `cad/part.scad` แก้ `which = "..."` แล้วกด F6 ส่วน `cad/assembly.scad` แสดงทุกชิ้นตามตำแหน่งประกอบ (`explode = 0` คือปิดกล่อง)
 
@@ -70,6 +72,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-cad.ps1
 | --- | --- |
 | `scripts/cad-model.mjs` | คำนวณรูปทรงทุกชิ้นจาก layout (กล่อง ทรงกระบอก ลำดับบวกลบ) ไม่มี dependency |
 | `scripts/export-cad.mjs` | เขียน `cad/params.scad` (ไฟล์ที่สร้างอัตโนมัติ เข้า git เพื่อให้เปิดใน OpenSCAD ได้ทันที) |
-| `scripts/build-cad.ps1` | รัน export แล้วเรียก OpenSCAD ส่งออก STL / 3MF / PNG และตรวจว่าเป็นชิ้นตันที่พิมพ์ได้ (ไม่มี `Simple: no`) |
+| `scripts/build-cad.ps1` | รัน export แล้วเรียก OpenSCAD ส่งออก STL / 3MF / PNG ตรวจว่าเป็นชิ้นตันที่พิมพ์ได้ (ไม่มี `Simple: no`) และเขียน `cad/out/build.json` |
+| `cad/out/` | ไฟล์พิมพ์ที่สร้างแล้ว (ค่าเริ่มต้น) เข้า git ยกเว้น `_src/` |
 | `cad/lib.scad` | แปลงข้อมูลใน `params.scad` เป็นชิ้นงาน |
 | `cad/part.scad`, `cad/assembly.scad`, `cad/test_fit.scad` | ชิ้นเดียวในทิศพิมพ์ / ภาพประกอบ / ชิ้นทดลอง |

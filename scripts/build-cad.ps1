@@ -52,4 +52,14 @@ if (-not $NoPng -and -not $Only.Count) {
   & $scad -o (Join-Path $out 'assembly.png') --render --imgsize=1400,800 --viewall --autocenter --camera=0,0,0,55,0,25,0 --colorscheme=Tomorrow (Join-Path $cad 'assembly.scad') 2>&1 | Out-Null
 }
 if ($bad.Count) { Write-Host "`n$($bad.Count) failed: $($bad -join ', ')"; exit 1 }
+# record what the files in cad/out were built from; scripts/check-web.mjs fails when the layout has moved on since
+if (-not $Only.Count) {
+  $info = [ordered]@{
+    params_sha256 = (Get-FileHash (Join-Path $cad 'params.scad') -Algorithm SHA256).Hash.ToLower()
+    fit = $Fit; hole_add = $HoleAdd; screw = $Screw; pod_cable = $PodCable
+    openscad = ((& $scad --version 2>&1 | Out-String).Trim())
+    parts = $names; formats = $formats; png = (-not $NoPng)
+  }
+  [IO.File]::WriteAllText((Join-Path $out 'build.json'), (($info | ConvertTo-Json) -replace "`r`n", "`n") + "`n")
+}
 Write-Host "`n$($names.Count) parts built in $out (fit $Fit, hole_add $HoleAdd, screws $Screw)"

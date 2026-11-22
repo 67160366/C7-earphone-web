@@ -13,5 +13,5 @@ SIM_*.json
 # การตั้งค่าฐานข้อมูลและรหัสส่งข้อมูลของ API (มีรหัสผ่านจริง)
 api/config.local.php
 
-# ไฟล์ STL/3MF/PNG ที่ scripts/build-cad.ps1 สร้าง (สร้างใหม่ได้ทุกเมื่อ)
-cad/out/
+# ไฟล์ห่อชั่วคราวที่ scripts/build-cad.ps1 สร้างให้ OpenSCAD (ไฟล์ STL/3MF/PNG ใน cad/out/ เข้า git)
+cad/out/_src/

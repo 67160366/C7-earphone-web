@@ -1,0 +1,26 @@
+{
+    "params_sha256":  "55e0d22510524a5e92d469c2d23bbf625883b5476f23c2500f10091d7fad6619",
+    "fit":  0.25,
+    "hole_add":  0.15,
+    "screw":  "pilot",
+    "pod_cable":  1.2,
+    "openscad":  "OpenSCAD version 2021.01",
+    "parts":  [
+                  "c7_base",
+                  "c7_tray",
+                  "c7_lid",
+                  "c7_clamp",
+                  "pod_base_L",
+                  "pod_lid_L",
+                  "pod_clamp_L",
+                  "pod_base_R",
+                  "pod_lid_R",
+                  "pod_clamp_R",
+                  "test_fit"
+              ],
+    "formats":  [
+                    "stl",
+                    "3mf"
+                ],
+    "png":  true
+}

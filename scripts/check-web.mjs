@@ -614,6 +614,11 @@ await test('cad: 10 printed parts with the outside sizes of the layout, params.s
     for (const p of parts) assert.ok(p.z[0] <= CAD.bbox(p).lo[2] + 1e-9 && p.z[1] >= CAD.bbox(p).hi[2] - 1e-9, `${p.name}: z range used for the print orientation is wrong`);
     const disk = await readFile(new URL('../cad/params.scad', import.meta.url), 'utf8');
     assert.equal(disk.replace(/\r\n/g, '\n'), CAD.paramsScad(), 'cad/params.scad is stale: run node scripts/export-cad.mjs');
+    // the STL / 3MF files in git were built from this params.scad (scripts/build-cad.ps1 writes build.json)
+    const { createHash } = await import('node:crypto');
+    const built = JSON.parse(await readFile(new URL('../cad/out/build.json', import.meta.url), 'utf8'));
+    assert.equal(built.params_sha256, createHash('sha256').update(CAD.paramsScad()).digest('hex'), 'cad/out is stale: run scripts/build-cad.ps1 (default options) and commit cad/out');
+    for (const n of [...Object.keys(by), 'test_fit']) for (const ext of ['stl', '3mf']) await readFile(new URL(`../cad/out/${n}.${ext}`, import.meta.url)).catch(() => assert.fail(`cad/out/${n}.${ext} is missing`));
 });
 await test('cad: nothing printed runs into a board, screws leave plastic', () => {
     for (const mode of ['pilot', 'insert']) {
